@@ -3,323 +3,1231 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Manhunt</title>
+<title>Manhunt - Live GPS Tactical Tag</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
-:root{--bg:#0e1a14;--panel:#16261d;--line:#2c4637;--ink:#ece8d6;--dim:#9db3a3;--hider:#3fd9c2;--seeker:#ff5a36;--warn:#ffc847}
-*{box-sizing:border-box}
-html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-#map{position:fixed;inset:0;z-index:0}
+:root{
+  --bg:#09120e;
+  --panel:#122119;
+  --panel-elevated:#192d22;
+  --line:#264232;
+  --ink:#f2efe7;
+  --dim:#8ea394;
+  --hider:#34d399;
+  --seeker:#f87171;
+  --warn:#fbbf24;
+  --danger:#ef4444;
+  --blue:#38bdf8;
+  --gmaps:#4285f4;
+  --amaps:#007aff;
+  --safe-top:max(12px,env(safe-area-inset-top));
+  --safe-bot:max(16px,env(safe-area-inset-bottom));
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;user-select:none;overflow:hidden}
+#map{position:fixed;inset:0;z-index:0;background:#18281f}
 .hide{display:none!important}
-button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:12px 16px;background:var(--ink);color:var(--bg);cursor:pointer}
+
+/* Buttons & Inputs */
+button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:12px 16px;background:var(--ink);color:var(--bg);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:opacity .15s,transform .08s}
+button:active{transform:scale(.98)}
 button.alt{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
 button.sk{background:var(--seeker);color:#fff}
-button:disabled{opacity:.45}
-input{font:inherit;width:100%;padding:12px;border-radius:10px;border:1.5px solid var(--line);background:#0b140f;color:var(--ink)}
-label{display:block;font-size:13px;color:var(--dim);margin:8px 0 3px}
-#home{position:fixed;inset:0;z-index:5;background:var(--bg);padding:max(24px,env(safe-area-inset-top)) 22px 24px;overflow:auto}
-#home h1{font-size:44px;line-height:1;margin:24px 0 6px;letter-spacing:-1px}
-#home p{color:var(--dim);margin:0 0 22px}
-#home .row{display:flex;gap:10px;margin-top:12px}
-#home .row>*{flex:1}
-#cfgwarn{background:#3a2a10;border:1.5px solid var(--warn);color:var(--warn);padding:10px 12px;border-radius:10px;margin-top:16px;font-size:14px}
-#top{position:fixed;z-index:3;left:0;right:0;top:0;padding:max(8px,env(safe-area-inset-top)) 10px 8px;background:linear-gradient(var(--bg),rgba(14,26,20,.85));display:flex;gap:10px;align-items:center}
+button.hd{background:var(--hider);color:#052417}
+button.warn{background:var(--warn);color:#2b1900}
+button.danger{background:var(--danger);color:#fff}
+button.sm{padding:7px 11px;font-size:13px;border-radius:8px}
+button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+input,select{font:inherit;width:100%;padding:11px 12px;border-radius:10px;border:1.5px solid var(--line);background:#0b1610;color:var(--ink)}
+input:focus,select:focus{border-color:var(--hider);outline:none}
+label{display:block;font-size:12px;color:var(--dim);margin:8px 0 3px;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+
+/* Home Screen */
+#home{position:fixed;inset:0;z-index:100;background:var(--bg);padding:var(--safe-top) 22px var(--safe-bot);overflow-y:auto;display:flex;flex-direction:column}
+.home-hero{margin:auto 0;padding:20px 0}
+#home h1{font-size:46px;line-height:1;margin:0 0 6px;letter-spacing:-1.5px;font-weight:900;background:linear-gradient(135deg,#34d399,#38bdf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+#home p{color:var(--dim);margin:0 0 24px;font-size:16px}
+.row{display:flex;gap:10px;margin-top:10px}
+.row>*{flex:1}
+#cfgwarn{background:#3a2908;border:1.5px solid var(--warn);color:var(--warn);padding:12px;border-radius:10px;margin-top:16px;font-size:13px;line-height:1.4}
+
+/* Top HUD */
+#top{position:fixed;z-index:30;left:0;right:0;top:0;padding:var(--safe-top) 12px 10px;background:linear-gradient(var(--bg) 60%,rgba(9,18,14,.9) 85%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:flex;gap:10px;align-items:center}
 #top .info{flex:1;min-width:0}
-#top .l1{font-weight:800}
-#top .l2{font-size:13px;color:var(--dim)}
-#me{padding:2px 8px;border-radius:99px;font-size:12px;margin-left:6px;color:#06201a;background:var(--hider)}
-#me.seeker{background:var(--seeker);color:#fff}
-#top button{padding:8px 12px}
-#warn{position:fixed;z-index:3;left:10px;right:10px;top:calc(max(8px,env(safe-area-inset-top)) + 58px);padding:10px 12px;border-radius:10px;background:var(--seeker);color:#fff;font-weight:700;text-align:center}
-#sheet{position:fixed;z-index:3;left:0;right:0;bottom:0;max-height:52vh;overflow:auto;background:var(--panel);border-top:1.5px solid var(--line);border-radius:16px 16px 0 0;padding:14px 14px max(14px,env(safe-area-inset-bottom))}
-#sheet h3{margin:0 0 8px}
-#sheet p{margin:6px 0;color:var(--dim)}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
-.chip{padding:3px 10px;border-radius:99px;border:1.5px solid var(--line);font-size:14px}
-.chip.seeker{border-color:var(--seeker)}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.hrow{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
-.hrow b{flex:1}
-.hrow button{padding:7px 10px;font-size:13px}
-.chat-box{background:#0b140f;border:1.5px solid var(--line);border-radius:10px;height:120px;overflow-y:auto;padding:8px;margin-bottom:8px;font-size:14px}
-.chat-msg{margin-bottom:4px}
-.chat-msg b{color:var(--hider)}
-.chat-msg.seeker b{color:var(--seeker)}
-#toast{position:fixed;z-index:6;left:12px;right:12px;top:30%;text-align:center;font-weight:800;font-size:20px;background:var(--warn);color:#2a1d00;padding:16px;border-radius:14px;display:none}
-.dot{width:16px;height:16px;border-radius:50%;background:var(--hider);border:2.5px solid #06201a;position:relative;box-shadow:0 0 0 2px rgba(63,217,194,.35)}
-.dot.seeker{background:var(--seeker);border-color:#3a0d02;box-shadow:0 0 0 2px rgba(255,90,54,.4)}
-.dot.you{box-shadow:0 0 0 5px rgba(236,232,214,.55)}
-.dot.ping{background:transparent;border:3px dashed var(--warn);width:34px;height:34px;margin:-9px 0 0 -9px;box-shadow:none}
-.dot span{position:absolute;left:20px;top:-3px;font-size:12px;font-weight:700;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap}
-.dot.ping span{left:38px;top:6px;color:var(--warn)}
+#top .title-line{display:flex;align-items:center;gap:6px;font-weight:800;font-size:16px}
+#top .meta-line{font-size:12.5px;color:var(--dim);margin-top:2px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.badge{padding:2px 8px;border-radius:99px;font-size:11.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase}
+.badge.hider{background:var(--hider);color:#052417}
+.badge.seeker{background:var(--seeker);color:#fff}
+.badge.host{background:var(--warn);color:#2b1900}
+.top-btns{display:flex;gap:6px}
+
+/* Phase Alert Banner */
+#phase-banner{position:fixed;z-index:29;left:10px;right:10px;top:calc(var(--safe-top) + 60px);padding:10px 14px;border-radius:12px;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 8px 24px rgba(0,0,0,.45);animation:slideDown .25s ease-out}
+#phase-banner.warn{background:var(--warn);color:#261500;border:1.5px solid #ffd56b}
+#phase-banner.danger{background:var(--danger);color:#fff;border:1.5px solid #ff7878}
+#phase-banner.info{background:var(--panel-elevated);color:var(--ink);border:1.5px solid var(--line)}
+@keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+
+/* Out-of-zone persistent warning */
+#zone-warn{position:fixed;z-index:28;left:10px;right:10px;top:calc(var(--safe-top) + 115px);background:var(--danger);color:#fff;padding:10px 14px;border-radius:10px;font-weight:800;text-align:center;box-shadow:0 4px 16px rgba(239,68,68,.4);animation:pulseWarn 1.2s infinite alternate}
+@keyframes pulseWarn{from{transform:scale(1)}to{transform:scale(1.02)}}
+
+/* Fullscreen Overlays (Countdown & Headstart) */
+.full-overlay{position:fixed;inset:0;z-index:200;background:rgba(9,18,14,.92);backdrop-filter:blur(10px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;animation:fadeIn .2s ease-out}
+.full-overlay h2{font-size:32px;margin:0 0 10px;font-weight:900}
+.full-overlay .count{font-size:96px;font-weight:900;line-height:1;margin:16px 0;letter-spacing:-3px;font-variant-numeric:tabular-nums}
+.full-overlay p{color:var(--dim);max-width:320px;font-size:16px;margin:0 0 24px}
+
+/* Bottom Sheet */
+#sheet{position:fixed;z-index:25;left:0;right:0;bottom:0;max-height:78vh;background:var(--panel);border-top:1.5px solid var(--line);border-radius:20px 20px 0 0;padding:10px 14px var(--safe-bot);display:flex;flex-direction:column;box-shadow:0 -10px 30px rgba(0,0,0,.5);transition:transform .2s ease}
+.sheet-handle{width:36px;height:4px;border-radius:99px;background:var(--line);margin:0 auto 10px;cursor:pointer}
+.tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:12px;overflow-x:auto}
+.tab{flex:1;min-width:60px;padding:8px 6px;border-radius:8px;font-size:13px;font-weight:700;text-align:center;background:transparent;color:var(--dim);border:none;cursor:pointer;position:relative}
+.tab.active{background:var(--panel-elevated);color:var(--ink)}
+.tab .badge-count{position:absolute;top:2px;right:2px;background:var(--seeker);color:#fff;font-size:10px;padding:1px 5px;border-radius:99px}
+.tab-content{overflow-y:auto;flex:1;max-height:56vh}
+
+/* Chips & Roster */
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.chip{padding:4px 10px;border-radius:99px;border:1.5px solid var(--line);font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:5px;background:#0d1812}
+.chip.seeker{border-color:var(--seeker);color:#fca5a5}
+.chip.hider{border-color:var(--hider);color:#6ee7b7}
+.chip.host{border-color:var(--warn)}
+
+/* Target rows */
+.hrow{display:flex;gap:10px;align-items:center;padding:10px;background:#0d1812;border:1px solid var(--line);border-radius:10px;margin-bottom:8px}
+.hrow b{flex:1;font-size:15px}
+.hrow .actions{display:flex;gap:6px}
+
+/* Chat styles */
+#chat-msgs{display:flex;flex-direction:column;gap:8px;padding-bottom:12px;min-height:160px;max-height:38vh;overflow-y:auto}
+.msg{padding:8px 12px;border-radius:12px;max-width:85%;font-size:14px;background:#182b20;align-self:flex-start}
+.msg.me{background:#234432;align-self:flex-end}
+.msg .meta{font-size:11px;color:var(--dim);margin-bottom:3px;display:flex;gap:6px;align-items:center}
+.chat-presets{display:flex;gap:6px;overflow-x:auto;padding:6px 0 10px}
+.preset-btn{background:#0e1c14;border:1px solid var(--line);color:var(--dim);padding:5px 9px;border-radius:99px;font-size:12px;white-space:nowrap;cursor:pointer}
+.preset-btn:hover{color:var(--ink);border-color:var(--hider)}
+.chat-bar{display:flex;gap:8px}
+.chat-bar input{flex:1}
+
+/* Map Markers */
+.dot{width:18px;height:18px;border-radius:50%;background:var(--hider);border:2.5px solid #052417;position:relative;box-shadow:0 0 0 2px rgba(52,211,153,.35)}
+.dot.seeker{background:var(--seeker);border-color:#3a0d02;box-shadow:0 0 0 2px rgba(248,113,113,.4)}
+.dot.you{box-shadow:0 0 0 6px rgba(242,239,231,.5)}
+.dot.ping{background:rgba(251,191,36,.15);border:3px dashed var(--warn);width:40px;height:40px;margin:-11px 0 0 -11px;box-shadow:none;animation:pingPulse 1.8s infinite}
+@keyframes pingPulse{0%{transform:scale(.95);opacity:1}50%{transform:scale(1.15);opacity:.7}100%{transform:scale(.95);opacity:1}}
+.dot span{position:absolute;left:22px;top:-4px;font-size:12px;font-weight:700;color:#fff;text-shadow:0 0 4px #000,0 0 4px #000;white-space:nowrap;pointer-events:none}
+.dot.ping span{left:44px;top:8px;color:var(--warn)}
+
+/* Leaflet Popup & Navigation Links */
+.leaflet-popup-content-wrapper{background:var(--panel);color:var(--ink);border:1.5px solid var(--line);border-radius:12px}
+.leaflet-popup-tip{background:var(--panel)}
+.leaflet-popup-content{margin:12px 14px;font-size:14px;line-height:1.35}
+.nav-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+.nav-link{display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 10px;border-radius:8px;text-decoration:none;font-size:12.5px;font-weight:700;color:#fff}
+.nav-link.gmaps{background:var(--gmaps)}
+.nav-link.amaps{background:var(--amaps)}
+.nav-link:active{opacity:.85}
+
+/* Settings Grid */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* Toast */
+#toast{position:fixed;z-index:300;left:16px;right:16px;top:20%;text-align:center;font-weight:800;font-size:17px;background:var(--warn);color:#2b1900;padding:14px 18px;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.5);display:none;pointer-events:none;animation:toastIn .2s ease-out}
+@keyframes toastIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
 </style>
 </head>
 <body>
+
 <div id="map"></div>
 
+<!-- Home / Join Screen -->
 <div id="home">
-  <h1>Manhunt</h1>
-  <p>Hiders run, seekers hunt. Every catch adds a seeker.</p>
-  <label for="name">Your name</label>
-  <input id="name" maxlength="14" autocomplete="off">
-  <div class="row"><button id="create">Create game</button></div>
-  <label for="code">Or join with a game code</label>
-  <div class="row"><input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="ABCD"><button id="join" class="alt">Join game</button></div>
-  <div id="cfgwarn" class="hide">Firebase isn’t set up yet. Paste your project’s config into CFG at the top of the script in index.html.</div>
+  <div class="home-hero">
+    <h1>Manhunt</h1>
+    <p>Live GPS tactical hunt. Hiders run and scatter, seekers hunt. Every catch converts a seeker.</p>
+    
+    <label for="name">Your codename</label>
+    <input id="name" maxlength="14" autocomplete="off" placeholder="e.g. Ghost, Maverick">
+    
+    <div class="row"><button id="create">Create New Game</button></div>
+    
+    <label for="code" style="margin-top:20px">Or enter 4-letter game code</label>
+    <div class="row">
+      <input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="ABCD">
+      <button id="join" class="alt">Join Game</button>
+    </div>
+    
+    <div id="cfgwarn" class="hide">
+      <b>Firebase Setup Required:</b> Please check your Firebase configuration in CFG at the top of the script in index.html.
+    </div>
+  </div>
 </div>
 
+<!-- Top HUD -->
 <div id="top" class="hide">
-  <div class="info"><div class="l1"><span id="gcode"></span><span id="me"></span></div><div class="l2" id="status"></div></div>
-  <button id="center" class="alt" aria-label="Center map on me">Find me</button>
+  <div class="info">
+    <div class="title-line">
+      <span id="gcode"></span>
+      <span id="me-badge" class="badge"></span>
+      <span id="counts-badge" style="font-size:13px;color:var(--dim);font-weight:600"></span>
+    </div>
+    <div class="meta-line" id="status-line">Connecting...</div>
+  </div>
+  <div class="top-btns">
+    <button id="center-btn" class="alt sm" title="Center on my location">📍 Me</button>
+    <button id="sheet-toggle" class="alt sm">📋 Menu</button>
+  </div>
 </div>
-<div id="warn" class="hide"></div>
-<div id="sheet" class="hide"></div>
+
+<!-- Phase & Event Banner -->
+<div id="phase-banner" class="hide">
+  <span id="phase-banner-text"></span>
+  <span id="phase-banner-time" style="font-family:monospace;font-size:15px;margin-left:10px"></span>
+</div>
+
+<!-- Out of zone warning banner -->
+<div id="zone-warn" class="hide">⚠️ OUTSIDE SAFE ZONE! Return immediately!</div>
+
+<!-- Fullscreen Countdown for Game Start -->
+<div id="start-overlay" class="full-overlay hide">
+  <h2>Game Starting</h2>
+  <div class="count" id="start-count">5</div>
+  <p>Prepare your gear! Game is initializing...</p>
+</div>
+
+<!-- Fullscreen Seeker Hold Overlay (Seeker Headstart) -->
+<div id="headstart-overlay" class="full-overlay hide">
+  <h2 style="color:var(--seeker)">🛑 SEEKER HOLD</h2>
+  <div class="count" id="headstart-count" style="color:var(--seeker)">120</div>
+  <p>Hiders have a headstart to scatter and take cover! Hold position at base until release.</p>
+</div>
+
+<!-- Closed Game Overlay -->
+<div id="closed-overlay" class="full-overlay hide">
+  <h2>Game Ended</h2>
+  <p id="closed-reason">The host has closed the lobby.</p>
+  <button id="closed-exit" class="hd">Return to Home</button>
+</div>
+
+<!-- Bottom Drawer / Sheet -->
+<div id="sheet" class="hide">
+  <div class="sheet-handle" id="sheet-handle"></div>
+  
+  <div class="tabs">
+    <button class="tab active" data-tab="targets" id="tab-btn-targets">Hunt</button>
+    <button class="tab" data-tab="chat" id="tab-btn-chat">Team Chat <span class="badge-count hide" id="chat-badge">0</span></button>
+    <button class="tab" data-tab="roster" id="tab-btn-roster">Players (<span id="tab-count">0</span>)</button>
+    <button class="tab" data-tab="settings" id="tab-btn-settings">Settings</button>
+  </div>
+
+  <div class="tab-content" id="tab-content">
+    <!-- Populated dynamically via JS -->
+  </div>
+</div>
+
+<!-- Audio chime & notification toast -->
 <div id="toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import {getDatabase,ref,set,update,onValue,get,push,remove,serverTimestamp,onDisconnect} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import {getDatabase,ref,set,update,onValue,get,push,remove,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-const CFG={apiKey:"AIzaSyAyEXD7UlocCaAdv2iI_5S-mTFIVuY8h5M",authDomain:"manhunt-76fb0.firebaseapp.com",databaseURL:"https://manhunt-76fb0-default-rtdb.firebaseio.com",projectId:"manhunt-76fb0",appId:"1:542100450450:web:5f6bdb74f991abdc760a4b"};
+// 1) Firebase Configuration
+const CFG = {
+  apiKey: "AIzaSyAyEXD7UlocCaAdv2iI_5S-mTFIVuY8h5M",
+  authDomain: "manhunt-76fb0.firebaseapp.com",
+  databaseURL: "https://manhunt-76fb0-default-rtdb.firebaseio.com",
+  projectId: "manhunt-76fb0",
+  appId: "1:542100450450:web:5f6bdb74f991abdc760a4b"
+};
 
-const $=s=>document.querySelector(s);
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const fmt=s=>{s=Math.max(0,Math.round(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
-const dist=(a,b)=>{const t=Math.PI/180,R=6371000,dl=(b.lat-a.lat)*t,dn=(b.lng-a.lng)*t,x=Math.sin(dl/2)**2+Math.cos(a.lat*t)*Math.cos(b.lat*t)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x))};
-const lGetSet=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){}};
+const $ = s => document.querySelector(s);
+const esc = s => String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = s => { s = Math.max(0, Math.round(s)); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); };
+const dist = (a, b) => {
+  if (!a || !b || a.lat == null || b.lat == null) return Infinity;
+  const t = Math.PI/180, R = 6371000;
+  const dl = (b.lat - a.lat) * t, dn = (b.lng - a.lng) * t;
+  const x = Math.sin(dl/2)**2 + Math.cos(a.lat*t) * Math.cos(b.lat*t) * Math.sin(dn/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+};
+const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch(e){} };
 
-const configured=!!CFG.apiKey&&CFG.apiKey!=="YOUR_API_KEY";
-let db; if(configured){db=getDatabase(initializeApp(CFG))} else $('#cfgwarn').classList.remove('hide');
+const configured = !!CFG.apiKey && CFG.apiKey !== "YOUR_API_KEY";
+let db;
+if (configured) {
+  try { db = getDatabase(initializeApp(CFG)); } catch(e){ console.error(e); }
+} else {
+  $('#cfgwarn').classList.remove('hide');
+}
 
-const id=lGetSet('mh_id')||(lGetSet('mh_id',Math.random().toString(36).slice(2,10)),lGetSet('mh_id'));
-$('#name').value=lGetSet('mh_name')||'';
-let code,g=null,P={},pings={},chats={},off=0,pos=null,map,circle,lastKey='',lastSent=0,lastWarn=0,seen=new Set(),firstPing=true,markers={},wake,localPos=null;
-const now=()=>Date.now()+off;
-const gref=p=>ref(db,`games/${code}${p?'/'+p:''}`);
+const id = ls('mh_id') || (ls('mh_id', Math.random().toString(36).slice(2,10)), ls('mh_id'));
+$('#name').value = ls('mh_name') || '';
 
-function toast(t,ms=3500){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display='none',ms)}
+// App State
+let code = '';
+let g = null;
+let P = {};
+let pings = {};
+let chatMsgs = [];
+let unreadChatCount = 0;
+let currentTab = 'targets';
+let off = 0;
+let pos = null;
+let lastSentPos = null;
+let lastSentTime = 0;
+let lastWarnSound = 0;
+let map = null;
+let circle = null;
+let nextCircle = null;
+let markers = {};
+let seenPings = new Set();
+let firstPing = true;
+let wake = null;
+let activePhaseIdx = -1;
+let audioCtx = null;
 
-$('#create').onclick=()=>{const n=nameOk();if(!n||!configured)return;
-  code=Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.random()*24|0]).join('');
-  set(gref(),{status:'lobby',host:id,cfg:{r0:500,r1:100,steps:4,stepIntervalMin:15,warningMin:5,hideTimeSec:180,pingCd:180,revEvery:15,revSecs:60}}).then(()=>enter(n));};
-$('#join').onclick=async()=>{const n=nameOk();if(!n||!configured)return;
-  code=$('#code').value.trim().toUpperCase();
-  const s=await get(gref('status'));if(!s.exists())return toast('No game with that code');enter(n);};
-function nameOk(){const n=$('#name').value.trim();if(!n){toast('Enter your name first');return null}lGetSet('mh_name',n);return n}
-if(lGetSet('mh_code')&&configured){code=lGetSet('mh_code');get(gref('status')).then(s=>{if(s.exists()&&lGetSet('mh_name'))enter(lGetSet('mh_name'))})}
+const now = () => Date.now() + off;
+const gref = p => ref(db, `games/${code}${p ? '/' + p : ''}`);
 
-async function enter(name){
-  lGetSet('mh_code',code);
-  const pr=gref('players/'+id);
-  const ex=await get(pr);const st=(await get(gref('status'))).val();
-  if(!ex.exists())await set(pr,{name,role:st==='lobby'?'hider':'seeker'});else update(pr,{name});
-  $('#home').classList.add('hide');['#top','#sheet'].forEach(s=>$(s).classList.remove('hide'));$('#gcode').textContent='Game '+code;
-  initMap();
-  onValue(ref(db,'.info/serverTimeOffset'),s=>off=s.val()||0);
-  onValue(gref(),s=>{
-    g=s.val();if(!g){leave();return}
-    P=g.players||{};pings=g.pings||{};chats=g.chats||{};
-    for(const [k,p] of Object.entries(pings)){
-      if(seen.has(k))continue;seen.add(k);
-      if(!firstPing&&p.target===id&&now()-p.t<20000){toast('A seeker just pinged your location!');navigator.vibrate&&navigator.vibrate([300,100,300])}
+// Navigation links helper (Google Maps & Apple Maps)
+function getNavLinks(lat, lng, label = 'Location') {
+  if (lat == null || lng == null) return '';
+  const enc = encodeURIComponent(label);
+  const gmaps = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=walking`;
+  const amaps = `https://maps.apple.com/?daddr=${lat},${lng}&q=${enc}&dirflg=w`;
+  return `
+    <div class="nav-grid">
+      <a href="${gmaps}" target="_blank" rel="noopener" class="nav-link gmaps">Google Maps</a>
+      <a href="${amaps}" target="_blank" rel="noopener" class="nav-link amaps">Apple Maps</a>
+    </div>
+  `;
+}
+
+// Web Audio API synthesizers for tactical beeps/alarms
+function initAudio() {
+  if (!audioCtx) {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (AudioContext) audioCtx = new AudioContext();
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+function playBeep(freq = 600, type = 'sine', duration = 0.15, count = 1) {
+  try {
+    initAudio();
+    if (!audioCtx) return;
+    for (let i = 0; i < count; i++) {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime + i * (duration + 0.08));
+      gain.gain.setValueAtTime(0.12, audioCtx.currentTime + i * (duration + 0.08));
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + i * (duration + 0.08) + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(audioCtx.currentTime + i * (duration + 0.08));
+      osc.stop(audioCtx.currentTime + i * (duration + 0.08) + duration);
     }
-    firstPing=false;
-    const key=[g.status,P[id]&&P[id].role,g.host===id,Object.keys(P).length,Object.values(P).filter(p=>p.role==='hider').length,Object.keys(chats).length].join('|');
-    if(key!==lastKey){lastKey=key;panel()}
+  } catch(e){}
+}
+
+function toast(t, ms = 3800) {
+  const e = $('#toast');
+  e.textContent = t;
+  e.style.display = 'block';
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => e.style.display = 'none', ms);
+}
+
+// ---------- Join / Create ----------
+$('#create').onclick = () => {
+  initAudio();
+  const n = nameOk(); if (!n || !configured) return;
+  code = Array.from({length:4}, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.random()*24|0]).join('');
+  const defaultCfg = {
+    r0: 500,
+    r1: 60,
+    numPhases: 4,
+    phaseMins: 15,
+    headstart: 120, // 2-minute headstart
+    pingCd: 180,
+    revEvery: 15,
+    revSecs: 60
+  };
+  set(gref(), {
+    status: 'lobby',
+    host: id,
+    cfg: defaultCfg,
+    createdAt: serverTimestamp()
+  }).then(() => enter(n));
+};
+
+$('#join').onclick = async () => {
+  initAudio();
+  const n = nameOk(); if (!n || !configured) return;
+  code = ($('#code').value || '').trim().toUpperCase();
+  if (code.length < 4) return toast('Enter a valid 4-character code');
+  const s = await get(gref('status'));
+  if (!s.exists()) return toast('Game not found with that code');
+  if (s.val() === 'closed') return toast('This lobby has been closed');
+  enter(n);
+};
+
+function nameOk() {
+  const n = ($('#name').value || '').trim();
+  if (!n) { toast('Enter your codename first'); return null; }
+  ls('mh_name', n);
+  return n;
+}
+
+if (ls('mh_code') && configured) {
+  code = ls('mh_code');
+  get(gref('status')).then(s => {
+    if (s.exists() && s.val() !== 'closed' && ls('mh_name')) {
+      enter(ls('mh_name'));
+    }
+  });
+}
+
+async function enter(name) {
+  ls('mh_code', code);
+  const pr = gref('players/' + id);
+  const ex = await get(pr);
+  const st = (await get(gref('status'))).val();
+  
+  if (!ex.exists()) {
+    await set(pr, { name, role: st === 'lobby' ? 'hider' : 'seeker', joinedAt: serverTimestamp() });
+  } else {
+    await update(pr, { name });
+  }
+
+  $('#home').classList.add('hide');
+  ['#top', '#sheet'].forEach(s => $(s).classList.remove('hide'));
+  $('#gcode').textContent = 'Code ' + code;
+  
+  initMap();
+
+  onValue(ref(db, '.info/serverTimeOffset'), s => off = s.val() || 0);
+
+  // Main game state listener
+  onValue(gref(), s => {
+    g = s.val();
+    if (!g || g.status === 'closed') {
+      $('#closed-overlay').classList.remove('hide');
+      return;
+    }
+    P = g.players || {};
+    pings = g.pings || {};
+    
+    // Check new pings
+    for (const [k, p] of Object.entries(pings)) {
+      if (seenPings.has(k)) continue;
+      seenPings.add(k);
+      if (!firstPing && p.target === id && now() - p.t < 25000) {
+        toast('🚨 ALERT: Seekers just pinged your exact location!');
+        playBeep(900, 'sawtooth', 0.25, 3);
+        navigator.vibrate && navigator.vibrate([400, 150, 400]);
+      }
+    }
+    firstPing = false;
+
+    renderPanel();
     tick();
   });
-  watchGps();setInterval(tick,1000);
-  try{wake=await navigator.wakeLock.request('screen')}catch(e){}
-  document.addEventListener('visibilitychange',async()=>{if(!document.hidden)try{wake=await navigator.wakeLock.request('screen')}catch(e){}});
-}
-function leave(){lGetSet('mh_code','');location.reload()}
 
-function initMap(){
-  map=L.map('map',{zoomControl:false}).setView([0,0],2);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
-  map.on('click',e=>{if(g&&g.status==='lobby'&&g.host===id)update(gref('cfg'),{center:{lat:e.latlng.lat,lng:e.latlng.lng}})});
-}
-let first=true;
-function watchGps(){
-  if(!navigator.geolocation)return toast('This browser has no GPS support',8000);
-  navigator.geolocation.watchPosition(p=>{
-    localPos={lat:p.coords.latitude,lng:p.coords.longitude};
-    if(first){first=false;map.setView([localPos.lat,localPos.lng],17)}
-    pos=localPos;
-    const t=Date.now(),me=P[id]||{};
-    if(me.lat==null||dist(pos,{lat:me.lat,lng:me.lng})>15||t-lastSent>15000){
-      lastSent=t;
-      update(gref('players/'+id),{lat:pos.lat,lng:pos.lng,t:now()});
+  // Listen to role-based team chat
+  setupChatListener();
+
+  watchGps();
+  setInterval(tick, 1000);
+
+  try { wake = await navigator.wakeLock.request('screen'); } catch(e){}
+  document.addEventListener('visibilitychange', async () => {
+    if (!document.hidden) {
+      try { wake = await navigator.wakeLock.request('screen'); } catch(e){}
     }
+  });
+}
+
+function leave() {
+  ls('mh_code', '');
+  location.reload();
+}
+$('#closed-exit').onclick = leave;
+
+// ---------- Team Chat ----------
+let chatRef = null;
+function setupChatListener() {
+  const me = P[id];
+  const role = me ? me.role : 'hider';
+  const chatPath = `chats/${role}`;
+  
+  onValue(gref(chatPath), s => {
+    const val = s.val() || {};
+    chatMsgs = Object.entries(val).map(([k, v]) => ({ id: k, ...v })).sort((a,b) => a.t - b.t);
+    
+    if (currentTab !== 'chat') {
+      unreadChatCount++;
+      $('#chat-badge').textContent = unreadChatCount;
+      $('#chat-badge').classList.remove('hide');
+    } else {
+      unreadChatCount = 0;
+      $('#chat-badge').classList.add('hide');
+    }
+    if (currentTab === 'chat') renderChatView();
+  });
+}
+
+async function sendChatMessage(text) {
+  if (!text || !text.trim()) return;
+  const me = P[id] || {};
+  const role = me.role || 'hider';
+  const msgObj = {
+    uid: id,
+    name: me.name || 'Anonymous',
+    role,
+    text: text.trim(),
+    t: now()
+  };
+  await push(gref(`chats/${role}`), msgObj);
+  playBeep(520, 'sine', 0.1);
+}
+
+// ---------- Map & Free Tier Throttled GPS ----------
+function initMap() {
+  map = L.map('map', { zoomControl: false }).setView([0, 0], 2);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap'
+  }).addTo(map);
+
+  map.on('click', e => {
+    if (g && g.status === 'lobby' && g.host === id) {
+      update(gref('cfg'), { center: { lat: e.latlng.lat, lng: e.latlng.lng } });
+      toast('Safe zone center updated');
+    }
+  });
+}
+
+let firstGps = true;
+function watchGps() {
+  if (!navigator.geolocation) return toast('Geolocation is not supported by your browser', 8000);
+
+  navigator.geolocation.watchPosition(p => {
+    pos = { lat: p.coords.latitude, lng: p.coords.longitude };
+    if (firstGps) {
+      firstGps = false;
+      map.setView([pos.lat, pos.lng], 17);
+    }
+
+    // Database & Free Tier Optimization:
+    // Only update Firebase if moved > 15 meters OR > 15 seconds pass
+    const t = Date.now();
+    const d = lastSentPos ? dist(pos, lastSentPos) : Infinity;
+    const dt = t - lastSentTime;
+
+    if (d >= 15 || dt >= 15000) {
+      // Debounce rapid bursts
+      if (dt >= 3000 || d >= 30) {
+        lastSentTime = t;
+        lastSentPos = { lat: pos.lat, lng: pos.lng };
+        update(gref('players/' + id), {
+          lat: Number(pos.lat.toFixed(6)),
+          lng: Number(pos.lng.toFixed(6)),
+          t: now()
+        });
+      }
+    }
+    // Local UI updates smoothly
     tick();
-  },e=>toast('Location blocked. Allow location access for this site, then reload.',8000),{enableHighAccuracy:true,maximumAge:2000,timeout:20000});
-}
-$('#center').onclick=()=>pos&&map.setView([pos.lat,pos.lng],17);
-
-function getGameState(n){
-  if(!g||g.status!=='live')return{r:g?g.cfg.r0:500,phase:'lobby',timeLeft:0};
-  const c=g.cfg, elapsed=(n-g.startedAt)/1000;
-  const hideSec=c.hideTimeSec||180;
-  if(elapsed < hideSec) return {phase:'hiding', timeLeft: hideSec - elapsed, r:c.r0};
-
-  const activeElapsed = elapsed - hideSec;
-  const stepDuration = (c.stepIntervalMin||15)*60;
-  const totalSteps = c.steps||4;
-  const totalShrinkDuration = totalSteps * stepDuration;
-
-  if(activeElapsed >= totalShrinkDuration) return {phase:'ended', r:c.r1, timeLeft:0};
-
-  const currentStep = Math.floor(activeElapsed / stepDuration);
-  const stepTimeElapsed = activeElapsed % stepDuration;
-  const warningSecs = (c.warningMin||5)*60;
-
-  let r = c.r0 - ((c.r0 - c.r1) / totalSteps) * currentStep;
-  let nextR = c.r0 - ((c.r0 - c.r1) / totalSteps) * (currentStep + 1);
-
-  let isWarning = stepDuration - stepTimeElapsed <= warningSecs;
-  return {phase:'shrinking', currentStep, r, nextR, isWarning, timeToNextStep: stepDuration - stepTimeElapsed};
+  }, e => {
+    toast('Location access blocked. Please enable GPS permissions for this site.', 8000);
+  }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
 }
 
-function reveal(n){
-  const c=g.cfg, hideSec=c.hideTimeSec||180, elapsed=(n-g.startedAt)/1000;
-  if(elapsed < hideSec) return {on:false, secs:hideSec-elapsed};
-  const e = elapsed - hideSec, ev=c.revEvery*60, ph=e%ev;
-  return ph<c.revSecs?{on:true,secs:c.revSecs-ph}:{on:false,secs:ev-ph};
-}
-
-function vis(p,pid,n){
-  if(pid===id||g.status!=='live')return true;
-  const mine=(P[id]||{}).role;
-  if(p.role===mine)return true;
-  if(p.punishedOutZone) return true;
-  return mine==='hider'&&p.role==='seeker'&&reveal(n).on;
-}
-
-function tick(){
-  if(!g||!map)return;
-  const n=now(),c=g.cfg,live=g.status==='live',me=P[id]||{},seeker=me.role==='seeker';
-  $('#me').textContent=seeker?'Seeker':'Hider';$('#me').className=seeker?'seeker':'';
-
-  const state = getGameState(n);
-
-  if(c.center){
-    const r = state.r, ll=[c.center.lat,c.center.lng];
-    if(!circle)circle=L.circle(ll,{radius:r,color:'#ff5a36',weight:3,fillColor:'#ff5a36',fillOpacity:.06}).addTo(map);
-    else{circle.setLatLng(ll);circle.setRadius(r)}
-  }else if(circle){circle.remove();circle=null}
-
-  let s='',w='';
-  if(g.status==='lobby')s='Lobby: waiting for host';
-  else if(g.status==='over')s='Game over';
-  else if(state.phase==='hiding')s=`Seekers release in ${fmt(state.timeLeft)}`;
-  else{
-    s=`Zone: ${Math.round(state.r)}m`;
-    if(state.isWarning) s+=` ⚠️ Shrinking to ${Math.round(state.nextR)}m in ${fmt(state.timeToNextStep)}`;
-    const rv=reveal(n);
-    s+=rv.on?` · Seekers visible ${fmt(rv.secs)}`:` · Seekers visible in ${fmt(rv.secs)}`;
-
-    if(c.center&&pos&&dist(pos,c.center)>state.r){
-      w='Outside the zone! Get back in or your location will be broadcasted!';
-      if(Date.now()-lastWarn>8000){lastWarn=Date.now();navigator.vibrate&&navigator.vibrate(400)}
-    }
-  }
-
-  $('#status').textContent=s;$('#warn').textContent=w;$('#warn'].classList.toggle('hide',!w);
-
-  const want={};
-  for(const [pid,p] of Object.entries(P)){
-    if(p.lat==null||!vis(p,pid,n))continue;
-    want[pid]={ll:[p.lat,p.lng],html:`<div class="dot ${p.role}${pid===id?' you':''}"><span>${esc(p.name)}</span></div>`};
-  }
-  if(live&&seeker)for(const [k,p] of Object.entries(pings)){
-    if(n-p.t>30000||!(P[p.by]&&P[p.by].role==='seeker'))continue;
-    const t=P[p.target];want['p'+k]={ll:[p.lat,p.lng],html:`<div class="dot ping"><span>${t?esc(t.name):'?'} ${Math.round((n-p.t)/1000)}s ago</span></div>`};
-  }
-  for(const k of Object.keys(markers))if(!want[k]){markers[k].remove();delete markers[k]}
-  for(const [k,w2] of Object.entries(want)){
-    if(!markers[k])markers[k]=L.marker(w2.ll,{icon:L.divIcon({className:'',html:w2.html,iconSize:[16,16]})}).addTo(map);
-    else{markers[k].setLatLng(w2.ll);if(markers[k]._h!==w2.html)markers[k].setIcon(L.divIcon({className:'',html:w2.html,iconSize:[16,16]}))}
-    markers[k]._h=w2.html;
-  }
-
-  const rem=c.pingCd-(n-(me.lastPing||0))/1000;
-  document.querySelectorAll('.pbtn').forEach(b=>{b.disabled=rem>0;b.textContent=rem>0?fmt(rem):'Ping'});
-}
-
-function panel(){
-  const S=$('#sheet'),c=g.cfg,host=g.host===id,me=P[id]||{},list=Object.entries(P);
-  const chips=list.map(([,p])=>`<span class="chip ${p.role}">${esc(p.name)}</span>`).join('');
-  let h='';
-  if(g.status==='lobby'){
-    h+=`<h3>Lobby · ${list.length} player${list.length==1?'':'s'}</h3><div class="chips">${chips}</div>`;
-    if(host){
-      h+=`<p>Tap map to place center or use your location.</p><button class="alt" data-a="mycenter">Use my location</button>
-      <div class="grid">${[['r0','Start radius (m)'],['r1','Min radius (m)'],['steps','Shrink steps'],['stepIntervalMin','Minutes per step'],['hideTimeSec','Hider headstart (s)'],['pingCd','Ping CD (s)']].map(([k,l])=>`<div><label>${l}</label><input type="number" inputmode="numeric" data-k="${k}" value="${c[k]}"></div>`).join('')}</div>
-      <p><button data-a="start" style="width:100%;margin-top:6px">Start game</button></p>`;
-    }else h+='<p>Waiting for host to start. Code: '+code+'</p>';
-    h+=`<button class="alt" data-a="leave">Leave</button>`;
-  }else if(g.status==='live'){
-    const hiders=list.filter(([,p])=>p.role==='hider');
-    const myRole=me.role||'hider';
-    const teamChats=Object.entries(chats).filter(([,m])=>m.channel===myRole).sort((a,b)=>a[1].t-b[1].t);
-    const chatHtml=teamChats.map(([,m])=>`<div class="chat-msg ${m.channel}"><b>${esc(m.name)}:</b> ${esc(m.text)}</div>`).join('');
-
-    if(myRole==='seeker'){
-      h+=`<h3>${hiders.length} hider${hiders.length==1?'':'s'} remaining</h3><p>Seeker Ops & Team Chat:</p>`;
-      h+=`<div class="chat-box" id="cbox">${chatHtml||'<p style="color:var(--dim)">No messages yet.</p>'}</div>
-      <div style="display:flex;gap:6px;margin-bottom:10px"><input id="ctxt" placeholder="Message seekers..." maxlength="100"><button data-a="sendchat">Send</button></div>`;
-      h+=hiders.map(([pid,p])=>{
-        const navUrl=`https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&travelmode=walking`;
-        return `<div class="hrow"><b>${esc(p.name)}</b><a href="${navUrl}" target="_blank" style="text-decoration:none"><button class="alt">Map</button></a><button class="pbtn sk" data-a="ping" data-id="${pid}">Ping</button><button class="alt" data-a="tag" data-id="${pid}">Tag</button></div>`;
-      }).join('');
-    }else{
-      h+=`<h3>${hiders.length} hider${hiders.length==1?'':'s'} remaining</h3><p>Hider Safe Zone & Team Chat:</p>`;
-      h+=`<div class="chat-box" id="cbox">${chatHtml||'<p style="color:var(--dim)">No messages yet.</p>'}</div>
-      <div style="display:flex;gap:6px;margin-bottom:10px"><input id="ctxt" placeholder="Message hiders..." maxlength="100"><button data-a="sendchat">Send</button></div>`;
-      h+=`<button class="sk" data-a="caught" style="width:100%;margin-bottom:8px">I got caught</button>`;
-    }
-    if(host) h+=`<button class="alt" data-a="endgame" style="width:100%;margin-top:10px;border-color:var(--seeker);color:var(--seeker)">End Game / Close Lobby</button>`;
-  }else{
-    const hiders=list.filter(([,p])=>p.role==='hider').length;
-    h+=`<h3>${hiders?'Game ended':'Seekers win'}</h3><div class="chips">${chips}</div>`;
-    h+=host?`<button data-a="again">Play again</button> `:'';
-    h+=`<button class="alt" data-a="leave">Leave</button>`;
-  }
-  S.innerHTML=h;
-  const cb=$('#cbox');if(cb)cb.scrollTop=cb.scrollHeight;
-}
-
-$('#sheet').onclick=async e=>{
-  const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,tid=b.dataset.id;
-  if(a==='leave'){if(g.status==='lobby')await remove(gref('players/'+id));leave()}
-  else if(a==='mycenter'){if(!pos)return toast('Waiting for GPS…');update(gref('cfg'),{center:pos});map.setView([pos.lat,pos.lng],17)}
-  else if(a==='start'){
-    if(!g.cfg.center)return toast('Set zone center first');
-    const ids=Object.keys(P);if(ids.length<2)return toast('Need at least 2 players');
-    const first=ids[Math.random()*ids.length|0],u={status:'live',startedAt:serverTimestamp(),pings:null,chats:null};
-    ids.forEach(k=>u['players/'+k+'/role']=k===first?'seeker':'hider');
-    update(gref(),u);
-  }
-  else if(a==='caught'){if(confirm('Mark yourself as caught?'))update(gref('players/'+id),{role:'seeker'})}
-  else if(a==='tag'){if(confirm('Mark '+P[tid].name+' as caught?'))update(gref('players/'+tid),{role:'seeker'})}
-  else if(a==='ping'){
-    const t=P[tid],me=P[id];
-    if(!t||t.lat==null)return toast('No GPS on that hider yet');
-    if(now()-(me.lastPing||0)<g.cfg.pingCd*1000)return;
-    await set(push(gref('pings')),{by:id,target:tid,lat:t.lat,lng:t.lng,t:now()});
-    update(gref('players/'+id),{lastPing:now()});
-  }
-  else if(a==='sendchat'){
-    const inp=$('#ctxt');const text=inp.value.trim();if(!text)return;
-    const me=P[id]||{};
-    await set(push(gref('chats')),{channel:me.role||'hider',name:me.name||'Anon',text,t:now()});
-    inp.value='';
-  }
-  else if(a==='endgame'){if(confirm('End the game and close the lobby?')){await update(gref(),{status:'over',endedAt:serverTimestamp()});}}
-  else if(a==='again'){const u={status:'lobby',pings:null,chats:null,startedAt:null,endedAt:null};Object.keys(P).forEach(k=>u['players/'+k+'/role']='hider');update(gref(),u)}
+$('#center-btn').onclick = () => pos && map.setView([pos.lat, pos.lng], 17);
+$('#sheet-toggle').onclick = () => {
+  const S = $('#sheet');
+  S.classList.toggle('hide');
 };
-$('#sheet').onchange=e=>{const k=e.target.dataset.k;if(k&&g.host===id){const v=Math.max(1,+e.target.value||1);update(gref('cfg'),{[k]:v})}};
+$('#sheet-handle').onclick = () => $('#sheet').classList.toggle('hide');
+
+// ---------- Increment-Based Zone Shrinking Logic ----------
+function getPhaseInfo(n) {
+  const c = g?.cfg || {};
+  const numPhases = Math.max(1, c.numPhases || 4);
+  const phaseSecs = Math.max(30, (c.phaseMins || 15) * 60);
+  const headstart = Math.max(0, c.headstart || 0);
+  const r0 = c.r0 || 500;
+  const r1 = c.r1 || 60;
+
+  if (!g || g.status !== 'live' || !g.startedAt) {
+    return {
+      phase: 1,
+      numPhases,
+      radius: r0,
+      nextRadius: r0,
+      timeLeftInPhase: phaseSecs,
+      isHeadstart: false,
+      headstartLeft: 0,
+      warn5m: false,
+      isFinalPhase: false
+    };
+  }
+
+  const elapsedTotal = Math.max(0, (n - g.startedAt) / 1000);
+
+  // Seeker Headstart period
+  if (elapsedTotal < headstart) {
+    const headstartLeft = headstart - elapsedTotal;
+    const nextRadius = numPhases > 1 ? Math.round(r0 - (1 * (r0 - r1)) / (numPhases - 1)) : r1;
+    return {
+      phase: 1,
+      numPhases,
+      radius: r0,
+      nextRadius,
+      timeLeftInPhase: phaseSecs,
+      isHeadstart: true,
+      headstartLeft,
+      warn5m: false,
+      isFinalPhase: false
+    };
+  }
+
+  const gameElapsed = elapsedTotal - headstart;
+  const currentPhaseIndex = Math.min(numPhases - 1, Math.floor(gameElapsed / phaseSecs));
+  const currentPhase = currentPhaseIndex + 1;
+
+  const calcRadius = (idx) => {
+    if (numPhases <= 1) return r1;
+    return Math.round(r0 - (idx * (r0 - r1)) / (numPhases - 1));
+  };
+
+  const currentRadius = calcRadius(currentPhaseIndex);
+  const isFinalPhase = currentPhaseIndex >= numPhases - 1;
+  const nextRadius = isFinalPhase ? currentRadius : calcRadius(currentPhaseIndex + 1);
+
+  const timeSpentInPhase = gameElapsed - (currentPhaseIndex * phaseSecs);
+  const timeLeftInPhase = isFinalPhase ? 0 : Math.max(0, phaseSecs - timeSpentInPhase);
+
+  // 5-Minute Warning: triggers when 300 seconds (5 min) or less remain in current phase
+  const warn5m = !isFinalPhase && timeLeftInPhase <= 300;
+
+  return {
+    phase: currentPhase,
+    numPhases,
+    radius: currentRadius,
+    nextRadius,
+    timeLeftInPhase,
+    isHeadstart: false,
+    headstartLeft: 0,
+    warn5m,
+    isFinalPhase
+  };
+}
+
+function reveal(n) {
+  const c = g?.cfg || {};
+  const revEvery = (c.revEvery || 15) * 60;
+  const revSecs = c.revSecs || 60;
+  if (!g?.startedAt) return { on: false, secs: revEvery };
+  const e = Math.max(0, (n - g.startedAt) / 1000);
+  if (e < revEvery) return { on: false, secs: revEvery - e };
+  const ph = e % revEvery;
+  return ph < revSecs ? { on: true, secs: revSecs - ph } : { on: false, secs: revEvery - ph };
+}
+
+// Continuous locations hidden:
+// Teammates always see each other.
+// Opponents are hidden EXCEPT during reveal intervals or manual pings.
+function vis(p, pid, n) {
+  if (pid === id || !g || g.status !== 'live') return true;
+  const myRole = (P[id] || {}).role;
+  if (p.role === myRole) return true; // Teammates see each other
+  if (reveal(n).on) return true;      // Both teams revealed during reveal interval
+  return false;
+}
+
+// ---------- Main Loop (1s Tick & Smooth UI) ----------
+function tick() {
+  if (!g || !map) return;
+  const n = now();
+  const c = g.cfg || {};
+  const me = P[id] || {};
+  const seeker = me.role === 'seeker';
+
+  // Role Badge & Player Counts
+  $('#me-badge').textContent = seeker ? 'Seeker' : 'Hider';
+  $('#me-badge').className = 'badge ' + (seeker ? 'seeker' : 'hider');
+
+  const playerList = Object.values(P);
+  const hidersCount = playerList.filter(p => p.role === 'hider').length;
+  const seekersCount = playerList.filter(p => p.role === 'seeker').length;
+  $('#counts-badge').textContent = `👥 ${playerList.length} (🏃 ${hidersCount} · 🔍 ${seekersCount})`;
+  $('#tab-count').textContent = playerList.length;
+
+  // Handle Game Startup 5-second Countdown Overlay
+  if (g.status === 'starting' && g.startCountdownAt) {
+    const startRemain = Math.max(0, Math.ceil(5 - (n - g.startCountdownAt)/1000));
+    $('#start-count').textContent = startRemain;
+    $('#start-overlay').classList.remove('hide');
+    if (startRemain <= 0 && g.host === id) {
+      update(gref(), {
+        status: 'live',
+        startedAt: serverTimestamp(),
+        startCountdownAt: null,
+        pings: null
+      });
+    }
+  } else {
+    $('#start-overlay').classList.add('hide');
+  }
+
+  // Phase & Zone Calculation
+  const pi = getPhaseInfo(n);
+  const rv = reveal(n);
+
+  // Check Phase Step Shift Notification
+  if (g.status === 'live' && !pi.isHeadstart && pi.phase !== activePhaseIdx) {
+    if (activePhaseIdx !== -1) {
+      toast(`🚨 ZONE SHRUNK! Safe zone is now ${pi.radius} meters.`, 5000);
+      playBeep(880, 'triangle', 0.3, 2);
+      navigator.vibrate && navigator.vibrate([300, 100, 300]);
+    }
+    activePhaseIdx = pi.phase;
+  }
+
+  // Draw Zones on Leaflet Map
+  if (c.center) {
+    const centerLatLng = [c.center.lat, c.center.lng];
+    // Main current safe zone
+    if (!circle) {
+      circle = L.circle(centerLatLng, {
+        radius: pi.radius,
+        color: '#f87171',
+        weight: 3,
+        fillColor: '#f87171',
+        fillOpacity: 0.07
+      }).addTo(map);
+    } else {
+      circle.setLatLng(centerLatLng);
+      circle.setRadius(pi.radius);
+    }
+
+    // Step-down Next Phase Preview Circle (dashed ring)
+    if (!pi.isFinalPhase && pi.nextRadius < pi.radius) {
+      if (!nextCircle) {
+        nextCircle = L.circle(centerLatLng, {
+          radius: pi.nextRadius,
+          color: '#fbbf24',
+          weight: 2,
+          dashArray: '6, 8',
+          fillOpacity: 0
+        }).addTo(map);
+      } else {
+        nextCircle.setLatLng(centerLatLng);
+        nextCircle.setRadius(pi.nextRadius);
+      }
+    } else if (nextCircle) {
+      nextCircle.remove();
+      nextCircle = null;
+    }
+  } else {
+    if (circle) { circle.remove(); circle = null; }
+    if (nextCircle) { nextCircle.remove(); nextCircle = null; }
+  }
+
+  // Status Line & Banner Updates
+  let statusText = '';
+  const banner = $('#phase-banner');
+  const bannerText = $('#phase-banner-text');
+  const bannerTime = $('#phase-banner-time');
+
+  if (g.status === 'lobby') {
+    statusText = 'Lobby: Waiting for host to configure and start';
+    banner.classList.add('hide');
+  } else if (g.status === 'over') {
+    statusText = 'Game Over';
+    banner.classList.add('hide');
+  } else if (g.status === 'live') {
+    if (pi.isHeadstart) {
+      statusText = `HEADSTART: Seekers released in ${fmt(pi.headstartLeft)}`;
+      banner.className = seeker ? 'danger' : 'info';
+      bannerText.textContent = seeker ? '🛑 SEEKER HOLD: Wait at base' : '🏃 RUN & HIDE: Seekers released soon!';
+      bannerTime.textContent = fmt(pi.headstartLeft);
+      banner.classList.remove('hide');
+
+      if (seeker) {
+        $('#headstart-count').textContent = Math.ceil(pi.headstartLeft);
+        $('#headstart-overlay').classList.remove('hide');
+      } else {
+        $('#headstart-overlay').classList.add('hide');
+      }
+    } else {
+      $('#headstart-overlay').classList.add('hide');
+      statusText = `Phase ${pi.phase}/${pi.numPhases} (${pi.radius}m)`;
+      statusText += pi.isFinalPhase ? ' · Final Zone' : ` · Shrinks in ${fmt(pi.timeLeftInPhase)}`;
+      statusText += rv.on ? ` · 👁️ REVEAL ON (${fmt(rv.secs)})` : ` · Reveal in ${fmt(rv.secs)}`;
+
+      // 5-Minute Warning Banner before each phase shift
+      if (pi.warn5m) {
+        banner.className = 'warn';
+        bannerText.textContent = `⚠️ Zone shrinks to ${pi.nextRadius}m in`;
+        bannerTime.textContent = fmt(pi.timeLeftInPhase);
+        banner.classList.remove('hide');
+
+        // Audio beep alert at 5m mark and 1m mark
+        if ((Math.round(pi.timeLeftInPhase) === 300 || Math.round(pi.timeLeftInPhase) === 60) && Date.now() - lastWarnSound > 5000) {
+          lastWarnSound = Date.now();
+          playBeep(750, 'sine', 0.2, 2);
+          navigator.vibrate && navigator.vibrate([200, 100, 200]);
+        }
+      } else {
+        banner.classList.add('hide');
+      }
+
+      // Safe zone boundary check for the current player
+      if (c.center && pos && dist(pos, c.center) > pi.radius) {
+        $('#zone-warn').classList.remove('hide');
+        if (Date.now() - lastWarnSound > 9000) {
+          lastWarnSound = Date.now();
+          playBeep(450, 'sawtooth', 0.35);
+          navigator.vibrate && navigator.vibrate(400);
+        }
+      } else {
+        $('#zone-warn').classList.add('hide');
+      }
+
+      // Check win condition (all hiders caught)
+      if (hidersCount === 0 && playerList.length > 1 && g.host === id) {
+        update(gref(), { status: 'over', endedAt: serverTimestamp() });
+      }
+    }
+  }
+  $('#status-line').textContent = statusText;
+
+  // Render Map Markers (Players & Pings)
+  const want = {};
+  for (const [pid, p] of Object.entries(P)) {
+    // Determine player coordinates: use live pos for self for smooth rendering
+    const lat = pid === id && pos ? pos.lat : p.lat;
+    const lng = pid === id && pos ? pos.lng : p.lng;
+    if (lat == null || !vis(p, pid, n)) continue;
+
+    const popupContent = `
+      <b>${esc(p.name)}</b> (${p.role})<br>
+      ${dist(pos, {lat,lng}) !== Infinity ? `${Math.round(dist(pos, {lat,lng}))}m away` : ''}
+      ${getNavLinks(lat, lng, p.name)}
+    `;
+    want[pid] = {
+      ll: [lat, lng],
+      html: `<div class="dot ${p.role}${pid === id ? ' you' : ''}"><span>${esc(p.name)}</span></div>`,
+      popup: popupContent
+    };
+  }
+
+  // Ping markers for seekers
+  if (g.status === 'live' && seeker) {
+    for (const [k, p] of Object.entries(pings)) {
+      if (n - p.t > 30000) continue; // Pings expire after 30 seconds
+      const targetP = P[p.target];
+      const targetName = targetP ? targetP.name : 'Target';
+      const ageSecs = Math.round((n - p.t)/1000);
+      const pingPopup = `
+        <b>🚨 Pinged: ${esc(targetName)}</b><br>
+        Pinged ${ageSecs}s ago<br>
+        ${getNavLinks(p.lat, p.lng, `Ping: ${targetName}`)}
+      `;
+      want['ping_' + k] = {
+        ll: [p.lat, p.lng],
+        html: `<div class="dot ping"><span>${esc(targetName)} (${ageSecs}s)</span></div>`,
+        popup: pingPopup
+      };
+    }
+  }
+
+  // Clean old markers
+  for (const k of Object.keys(markers)) {
+    if (!want[k]) {
+      markers[k].remove();
+      delete markers[k];
+    }
+  }
+
+  // Add / Update markers
+  for (const [k, item] of Object.entries(want)) {
+    if (!markers[k]) {
+      markers[k] = L.marker(item.ll, {
+        icon: L.divIcon({ className: '', html: item.html, iconSize: [18, 18] })
+      }).addTo(map);
+      if (item.popup) markers[k].bindPopup(item.popup);
+    } else {
+      markers[k].setLatLng(item.ll);
+      if (markers[k]._html !== item.html) {
+        markers[k].setIcon(L.divIcon({ className: '', html: item.html, iconSize: [18, 18] }));
+        markers[k]._html = item.html;
+      }
+      if (item.popup) markers[k].setPopupContent(item.popup);
+    }
+  }
+
+  // Update ping button cooldown timers in UI
+  const remPing = (c.pingCd || 180) - (n - (me.lastPing || 0)) / 1000;
+  document.querySelectorAll('.pbtn').forEach(b => {
+    b.disabled = remPing > 0 || pi.isHeadstart;
+    b.textContent = pi.isHeadstart ? 'Hold' : (remPing > 0 ? fmt(remPing) : 'Ping');
+  });
+}
+
+// ---------- Panel Tabs & Rendering ----------
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentTab = tab.dataset.tab;
+    if (currentTab === 'chat') {
+      unreadChatCount = 0;
+      $('#chat-badge').classList.add('hide');
+    }
+    renderPanel();
+  };
+});
+
+function renderPanel() {
+  const container = $('#tab-content');
+  if (!g) return;
+
+  if (currentTab === 'targets') renderTargetsView(container);
+  else if (currentTab === 'chat') renderChatView(container);
+  else if (currentTab === 'roster') renderRosterView(container);
+  else if (currentTab === 'settings') renderSettingsView(container);
+}
+
+// Tab 1: Targets / Hunt View
+function renderTargetsView(el) {
+  const me = P[id] || {};
+  const list = Object.entries(P);
+  const hiders = list.filter(([,p]) => p.role === 'hider');
+  const seekers = list.filter(([,p]) => p.role === 'seeker');
+  let h = '';
+
+  if (g.status === 'lobby') {
+    h += `
+      <div style="text-align:center;padding:10px 0">
+        <h3 style="margin:0 0 4px">Game Lobby</h3>
+        <p style="color:var(--dim);margin:0 0 14px">Share code <b style="color:var(--ink);font-size:18px">${code}</b> with other players.</p>
+        
+        <div class="row" style="margin-bottom:12px">
+          <button class="hd" data-a="setrole" data-r="hider" ${me.role === 'hider' ? 'disabled' : ''}>🏃 Be Hider</button>
+          <button class="sk" data-a="setrole" data-r="seeker" ${me.role === 'seeker' ? 'disabled' : ''}>🔍 Be Seeker</button>
+        </div>
+      </div>
+    `;
+
+    if (g.host === id) {
+      h += `
+        <div style="background:#0d1812;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:14px">
+          <div style="font-weight:700;margin-bottom:6px">👑 Host / Referee Controls</div>
+          <p style="font-size:13px;color:var(--dim);margin:0 0 10px">Set the safe zone center on map, then start when ready.</p>
+          <div class="row">
+            <button class="alt sm" data-a="mycenter">📍 Zone at my GPS</button>
+            <button class="alt sm" data-a="randomize">🎲 Randomize Teams</button>
+          </div>
+          <button class="hd" data-a="start-countdown" style="width:100%;margin-top:10px;font-size:16px">▶️ Start Game</button>
+        </div>
+      `;
+    }
+  } else if (g.status === 'live') {
+    if (me.role === 'seeker') {
+      h += `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <h3 style="margin:0">${hiders.length} Hider${hiders.length === 1 ? '' : 's'} Remaining</h3>
+          <span style="font-size:12px;color:var(--dim)">Ping reveals location for 30s</span>
+        </div>
+      `;
+      h += hiders.map(([pid, p]) => `
+        <div class="hrow">
+          <div>
+            <b>${esc(p.name)}</b>
+            <div style="font-size:12px;color:var(--dim)">${p.lat != null && pos ? `${Math.round(dist(pos, p))}m away` : 'Active'}</div>
+          </div>
+          <div class="actions">
+            <button class="pbtn sk sm" data-a="ping" data-id="${pid}">Ping</button>
+            <button class="alt sm" data-a="tag" data-id="${pid}">Caught</button>
+          </div>
+        </div>
+      `).join('');
+    } else {
+      h += `
+        <div style="margin-bottom:14px">
+          <h3 style="margin:0 0 6px">${hiders.length} Hider${hiders.length === 1 ? '' : 's'} Alive</h3>
+          <p style="color:var(--dim);font-size:13px;margin:0 0 12px">Stay inside the safe zone. Seekers only show on map during scheduled reveals.</p>
+          <button class="sk" data-a="caught" style="width:100%">🚨 I Was Caught (Become Seeker)</button>
+        </div>
+      `;
+    }
+
+    if (g.cfg && g.cfg.center) {
+      h += `
+        <div style="border-top:1px solid var(--line);padding-top:10px;margin-top:12px">
+          <div style="font-size:12px;color:var(--dim);margin-bottom:6px">🧭 QUICK NAVIGATION TO ZONE CENTER:</div>
+          ${getNavLinks(g.cfg.center.lat, g.cfg.center.lng, 'Zone Center')}
+        </div>
+      `;
+    }
+  } else {
+    h += `
+      <div style="text-align:center;padding:12px 0">
+        <h3>Game Over</h3>
+        <p style="color:var(--dim)">${hiders.length === 0 ? 'Every hider was captured! Seekers win!' : 'Game was concluded.'}</p>
+        ${g.host === id ? '<button class="hd" data-a="again" style="width:100%;margin-bottom:10px">🔄 Play Again (Reset Lobby)</button>' : ''}
+      </div>
+    `;
+  }
+
+  el.innerHTML = h;
+}
+
+// Tab 2: Dedicated Team Chat View
+function renderChatView(el) {
+  if (!el) el = $('#tab-content');
+  const me = P[id] || {};
+  const role = me.role || 'hider';
+  const roleName = role === 'seeker' ? '🔍 Seeker Hunt Chat' : '🏃 Hider Squad Chat';
+
+  const presets = role === 'seeker'
+    ? ['Hider spotted!', 'Need backup!', 'Moving towards center', 'Checking buildings', 'All clear here']
+    : ['Seeker near me!', 'Safe spot found', 'Moving inwards', 'Splitting up', 'Stay low'];
+
+  let h = `
+    <div style="font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between">
+      <span>${roleName}</span>
+      <span style="font-size:12px;color:var(--dim)">Only your team sees this</span>
+    </div>
+    
+    <div class="chat-presets">
+      ${presets.map(p => `<button class="preset-btn" data-a="preset" data-text="${esc(p)}">${esc(p)}</button>`).join('')}
+    </div>
+
+    <div id="chat-msgs">
+      ${chatMsgs.length === 0 ? '<div style="color:var(--dim);text-align:center;padding:20px">No messages yet. Coordinate with your team!</div>' : ''}
+      ${chatMsgs.map(m => `
+        <div class="msg ${m.uid === id ? 'me' : ''}">
+          <div class="meta"><b>${esc(m.name)}</b> · ${new Date(m.t).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
+          <div>${esc(m.text)}</div>
+        </div>
+      `).join('')}
+    </div>
+
+    <form class="chat-bar" id="chat-form">
+      <input id="chat-input" placeholder="Type tactical message..." autocomplete="off" maxlength="120">
+      <button type="submit" class="sm ${role === 'seeker' ? 'sk' : 'hd'}">Send</button>
+    </form>
+  `;
+
+  el.innerHTML = h;
+  const msgDiv = $('#chat-msgs');
+  if (msgDiv) msgDiv.scrollTop = msgDiv.scrollHeight;
+}
+
+// Tab 3: Roster View
+function renderRosterView(el) {
+  const list = Object.entries(P);
+  let h = `
+    <div style="margin-bottom:10px;font-weight:700">Active Roster (${list.length})</div>
+    <div class="chips">
+      ${list.map(([pid, p]) => `
+        <span class="chip ${p.role} ${g.host === pid ? 'host' : ''}">
+          ${g.host === pid ? '👑 ' : ''}${esc(p.name)} (${p.role})
+        </span>
+      `).join('')}
+    </div>
+  `;
+
+  if (g.status === 'lobby' && g.host === id) {
+    h += `
+      <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px">
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px">Host Player Management</div>
+        ${list.map(([pid, p]) => `
+          <div class="hrow">
+            <b>${esc(p.name)}</b>
+            <button class="alt sm" data-a="toggle-player-role" data-id="${pid}">Make ${p.role === 'hider' ? 'Seeker' : 'Hider'}</button>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+  el.innerHTML = h;
+}
+
+// Tab 4: Settings / Ref Flow / Host Controls
+function renderSettingsView(el) {
+  const c = g.cfg || {};
+  const isHost = g.host === id;
+
+  let h = `
+    <h3 style="margin:0 0 10px">Game Configuration</h3>
+    <div class="grid">
+      <div>
+        <label>Start Radius (m)</label>
+        <input type="number" data-k="r0" value="${c.r0 || 500}" ${!isHost ? 'disabled' : ''}>
+      </div>
+      <div>
+        <label>Final Radius (m)</label>
+        <input type="number" data-k="r1" value="${c.r1 || 60}" ${!isHost ? 'disabled' : ''}>
+      </div>
+      <div>
+        <label>Shrink Steps (Phases)</label>
+        <input type="number" data-k="numPhases" value="${c.numPhases || 4}" ${!isHost ? 'disabled' : ''}>
+      </div>
+      <div>
+        <label>Mins Per Phase</label>
+        <input type="number" data-k="phaseMins" value="${c.phaseMins || 15}" ${!isHost ? 'disabled' : ''}>
+      </div>
+      <div>
+        <label>Headstart (Secs)</label>
+        <input type="number" data-k="headstart" value="${c.headstart || 120}" ${!isHost ? 'disabled' : ''}>
+      </div>
+      <div>
+        <label>Ping Cooldown (s)</label>
+        <input type="number" data-k="pingCd" value="${c.pingCd || 180}" ${!isHost ? 'disabled' : ''}>
+      </div>
+      <div>
+        <label>Reveal Every (min)</label>
+        <input type="number" data-k="revEvery" value="${c.revEvery || 15}" ${!isHost ? 'disabled' : ''}>
+      </div>
+      <div>
+        <label>Reveal Duration (s)</label>
+        <input type="number" data-k="revSecs" value="${c.revSecs || 60}" ${!isHost ? 'disabled' : ''}>
+      </div>
+    </div>
+  `;
+
+  h += `
+    <div style="margin-top:20px;border-top:1px solid var(--line);padding-top:14px">
+      ${isHost ? '<button class="danger" data-a="close-lobby" style="width:100%;margin-bottom:10px">🛑 End Game / Close Lobby</button>' : ''}
+      <button class="alt" data-a="leave" style="width:100%">Leave Lobby</button>
+    </div>
+  `;
+
+  el.innerHTML = h;
+}
+
+// ---------- Event Delegation for Buttons ----------
+$('#sheet').onclick = async e => {
+  const b = e.target.closest('[data-a]');
+  if (!b) return;
+  const a = b.dataset.a;
+  const tid = b.dataset.id;
+  initAudio();
+
+  if (a === 'leave') {
+    if (g && g.status === 'lobby') await remove(gref('players/' + id));
+    leave();
+  }
+  else if (a === 'close-lobby') {
+    if (confirm('End game and close this lobby for all players?')) {
+      await update(gref(), { status: 'closed', endedAt: serverTimestamp() });
+      leave();
+    }
+  }
+  else if (a === 'setrole') {
+    await update(gref('players/' + id), { role: b.dataset.r });
+  }
+  else if (a === 'toggle-player-role') {
+    const cur = P[tid]?.role || 'hider';
+    await update(gref('players/' + tid), { role: cur === 'hider' ? 'seeker' : 'hider' });
+  }
+  else if (a === 'mycenter') {
+    if (!pos) return toast('Waiting for GPS position...');
+    update(gref('cfg'), { center: pos });
+    map.setView([pos.lat, pos.lng], 17);
+    toast('Zone center set to your location');
+  }
+  else if (a === 'randomize') {
+    const ids = Object.keys(P);
+    if (ids.length < 2) return toast('Need at least 2 players to randomize');
+    const shuffled = [...ids].sort(() => Math.random() - .5);
+    const seekerCount = Math.max(1, Math.floor(ids.length / 4));
+    const u = {};
+    shuffled.forEach((pid, i) => {
+      u[`players/${pid}/role`] = i < seekerCount ? 'seeker' : 'hider';
+    });
+    await update(gref(), u);
+    toast(`Assigned ${seekerCount} seeker(s) and ${ids.length - seekerCount} hider(s)`);
+  }
+  else if (a === 'start-countdown') {
+    if (!g.cfg || !g.cfg.center) return toast('Set the safe zone center first (tap map or use GPS)');
+    const ids = Object.keys(P);
+    if (ids.length < 2) return toast('Need at least 2 players to start');
+    await update(gref(), { status: 'starting', startCountdownAt: serverTimestamp() });
+  }
+  else if (a === 'caught') {
+    if (confirm('Confirm: You were caught? You will convert to a Seeker.')) {
+      await update(gref('players/' + id), { role: 'seeker' });
+      toast('You are now a Seeker! Hunt the remaining hiders.');
+    }
+  }
+  else if (a === 'tag') {
+    const targetName = P[tid] ? P[tid].name : 'player';
+    if (confirm(`Mark ${targetName} as caught?`)) {
+      await update(gref('players/' + tid), { role: 'seeker' });
+      toast(`${targetName} marked as caught.`);
+    }
+  }
+  else if (a === 'ping') {
+    const t = P[tid], me = P[id];
+    if (!t || t.lat == null) return toast('No GPS signal on that hider yet');
+    const cd = (g.cfg.pingCd || 180) * 1000;
+    if (now() - (me.lastPing || 0) < cd) return toast('Ping is on cooldown');
+
+    await set(push(gref('pings')), {
+      by: id,
+      target: tid,
+      lat: t.lat,
+      lng: t.lng,
+      t: now()
+    });
+    await update(gref('players/' + id), { lastPing: now() });
+    toast(`Pinged ${t.name}! Location marked for 30s.`);
+    playBeep(800, 'triangle', 0.2);
+  }
+  else if (a === 'preset') {
+    sendChatMessage(b.dataset.text);
+  }
+  else if (a === 'again') {
+    const u = { status: 'lobby', pings: null, startedAt: null, endedAt: null, startCountdownAt: null };
+    Object.keys(P).forEach(k => u['players/' + k + '/role'] = 'hider');
+    await update(gref(), u);
+  }
+};
+
+// Chat Form submit
+$('#sheet').onsubmit = e => {
+  if (e.target.id === 'chat-form') {
+    e.preventDefault();
+    const inp = $('#chat-input');
+    if (inp && inp.value.trim()) {
+      sendChatMessage(inp.value);
+      inp.value = '';
+    }
+  }
+};
+
+// Settings change by host
+$('#sheet').onchange = e => {
+  const k = e.target.dataset.k;
+  if (k && g && g.host === id) {
+    const v = Math.max(1, +e.target.value || 1);
+    update(gref('cfg'), { [k]: v });
+    toast(`Setting ${k} updated`);
+  }
+};
 </script>
 </body>
 </html>
