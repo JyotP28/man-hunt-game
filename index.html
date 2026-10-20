@@ -126,7 +126,7 @@ label{display:block;font-size:11px;font-weight:700;color:var(--text-muted);margi
 /* Cards & Lists */
 .card{background:var(--surface-raised);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:8px}
 .card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-.hrow{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:9px 10px;background:var(--surface-raised);border:1px solid var(--line);border-radius:8px;margin-bottom:6px}
+.hrow{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:9px 10px;background:var(--surface-raised);border:1px solid var(--line);border-radius:8px;margin-bottom:6px;transition:border-color .2s,background .2s}
 .hrow-main{min-width:0;flex:1}
 .hrow-name{font-weight:700;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hrow-sub{font-size:11.5px;color:var(--text-muted);font-family:var(--font-mono)}
@@ -160,8 +160,11 @@ label{display:block;font-size:11px;font-weight:700;color:var(--text-muted);margi
 .marker-dot.seeker{background:var(--seeker)}
 .marker-dot.you{box-shadow:0 0 0 5px rgba(243,246,249,.4)}
 .marker-dot.final{background:var(--hider);border:2px solid #fff;box-shadow:0 0 0 4px rgba(16,185,129,.4)}
+.marker-dot.exposed{background:var(--seeker);border:2px solid #fff;box-shadow:0 0 0 5px rgba(239,68,68,.5);animation:pulseExposed 1s infinite}
+@keyframes pulseExposed{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.2);opacity:.75}}
 .marker-dot span{position:absolute;left:20px;top:-4px;font-size:11px;font-weight:700;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap;pointer-events:none;font-family:var(--font-mono)}
 .marker-dot.final span{left:20px;top:-4px;color:var(--hider)}
+.marker-dot.exposed span{left:22px;top:-4px;color:var(--seeker)}
 
 /* Grid Settings */
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -365,10 +368,16 @@ let isDraggingFinalMarker = false;
 let editZoneMode = 'start'; // 'start' | 'final'
 let markers = {};
 let seenPings = new Set();
+let seenExposed = new Set();
 let firstPing = true;
 let wake = null;
 let activePhaseIdx = -1;
 let audioCtx = null;
+
+// Out-of-zone Exposure Tracking
+let outsideSince = null;
+let isExposedLocally = false;
+let lastExposedBroadcastTime = 0;
 
 const now = () => Date.now() + off;
 const gref = p => ref(db, `games/${code}${p ? '/' + p : ''}`);
@@ -585,6 +594,22 @@ async function enter(name) {
     }
     firstPing = false;
 
+    // Seeker alerts when any hider becomes exposed
+    const me = P[id];
+    if (me && me.role === 'seeker') {
+      for (const [pid, p] of Object.entries(P)) {
+        if (p.role === 'hider' && p.exposed && !seenExposed.has(pid)) {
+          seenExposed.add(pid);
+          toast(`INTEL: ${p.name.toUpperCase()} OUT OF BOUNDS - LOCATION EXPOSED`);
+          playBeep(880, 'sawtooth', 0.2, 2);
+          navigator.vibrate && navigator.vibrate([200, 100, 200]);
+        } else if (p.role === 'hider' && !p.exposed && seenExposed.has(pid)) {
+          seenExposed.delete(pid);
+          toast(`INTEL: ${p.name.toUpperCase()} RETURNED TO SAFE ZONE - CONCEALED`);
+        }
+      }
+    }
+
     renderPanel();
     tick();
   });
@@ -685,6 +710,41 @@ function initMap() {
   });
 }
 
+// Unified Location Reporting with Out-of-Zone 10s Override
+function maybeSendLocation(force = false) {
+  if (!pos || !db || !g || g.status !== 'live') return;
+  const t = Date.now();
+  const d = lastSentPos ? dist(pos, lastSentPos) : Infinity;
+  const dt = t - lastSentTime;
+
+  if (isExposedLocally) {
+    // When hider is outside safezone past 10s grace, broadcast every 10 seconds to seekers
+    if (dt >= 10000 || force) {
+      lastSentTime = t;
+      lastSentPos = { lat: pos.lat, lng: pos.lng };
+      lastExposedBroadcastTime = t;
+      update(gref('players/' + id), {
+        lat: Number(pos.lat.toFixed(6)),
+        lng: Number(pos.lng.toFixed(6)),
+        exposed: true,
+        t: now()
+      });
+    }
+  } else {
+    // Normal throttled updates: > 15m or >= 15 seconds
+    if ((d >= 15 || dt >= 15000 || force) && (dt >= 3000 || d >= 30 || force)) {
+      lastSentTime = t;
+      lastSentPos = { lat: pos.lat, lng: pos.lng };
+      update(gref('players/' + id), {
+        lat: Number(pos.lat.toFixed(6)),
+        lng: Number(pos.lng.toFixed(6)),
+        exposed: false,
+        t: now()
+      });
+    }
+  }
+}
+
 let firstGps = true;
 function watchGps() {
   if (!navigator.geolocation) return toast('Geolocation unsupported', 8000);
@@ -695,24 +755,7 @@ function watchGps() {
       firstGps = false;
       map.setView([pos.lat, pos.lng], 17);
     }
-
-    // Database & Free Tier Optimization:
-    // Only update Firebase if moved > 15m OR >= 15 seconds pass
-    const t = Date.now();
-    const d = lastSentPos ? dist(pos, lastSentPos) : Infinity;
-    const dt = t - lastSentTime;
-
-    if (d >= 15 || dt >= 15000) {
-      if (dt >= 3000 || d >= 30) {
-        lastSentTime = t;
-        lastSentPos = { lat: pos.lat, lng: pos.lng };
-        update(gref('players/' + id), {
-          lat: Number(pos.lat.toFixed(6)),
-          lng: Number(pos.lng.toFixed(6)),
-          t: now()
-        });
-      }
-    }
+    maybeSendLocation(false);
     tick();
   }, e => {
     toast('Location access denied. Enable GPS permissions.', 8000);
@@ -824,10 +867,15 @@ function reveal(n) {
   return ph < revSecs ? { on: true, secs: revSecs - ph } : { on: false, secs: revEvery - ph };
 }
 
+// Continuous Visibility:
+// 1. Teammates always see each other.
+// 2. Scheduled reveal interval shows everyone.
+// 3. Exposed hider outside safe zone (>10s) is visibly revealed to seekers!
 function vis(p, pid, n) {
   if (pid === id || !g || g.status !== 'live') return true;
   const myRole = (P[id] || {}).role;
   if (p.role === myRole) return true;
+  if (p.role === 'hider' && p.exposed === true) return true;
   if (reveal(n).on) return true;
   return false;
 }
@@ -838,6 +886,7 @@ function tick() {
   const n = now();
   const c = g.cfg || {};
   const me = P[id] || {};
+  const isHider = me.role === 'hider';
   const seeker = me.role === 'seeker';
 
   // Role pill
@@ -880,7 +929,6 @@ function tick() {
 
   // Draw Zones on Map
   if (g.status === 'lobby') {
-    // In Lobby: Show Phase 1 zone and Draggable Final Safe Zone for Host to verify
     const initialCenter = c.center;
     const finalCenter = pi.finalCenter || initialCenter;
     const finalRadius = c.r1 || 60;
@@ -917,7 +965,6 @@ function tick() {
         finalPreviewCircle.setRadius(finalRadius);
       }
 
-      // Draggable Final Zone Marker for Creator
       if (!finalZoneMarker) {
         finalZoneMarker = L.marker(fll, {
           draggable: true,
@@ -928,15 +975,11 @@ function tick() {
           })
         }).addTo(map);
 
-        finalZoneMarker.on('dragstart', () => {
-          isDraggingFinalMarker = true;
-        });
-
+        finalZoneMarker.on('dragstart', () => isDraggingFinalMarker = true);
         finalZoneMarker.on('drag', e => {
           const curPos = e.target.getLatLng();
           if (finalPreviewCircle) finalPreviewCircle.setLatLng(curPos);
         });
-
         finalZoneMarker.on('dragend', e => {
           isDraggingFinalMarker = false;
           const curPos = e.target.getLatLng();
@@ -976,7 +1019,6 @@ function tick() {
         circle.setRadius(pi.radius);
       }
 
-      // Next phase random zone preview (amber dashed circle in new spot)
       if (!pi.isFinalPhase && pi.nextCenter && pi.nextRadius < pi.radius) {
         const nextLatLng = [pi.nextCenter.lat, pi.nextCenter.lng];
         if (!nextCircle) {
@@ -1017,7 +1059,7 @@ function tick() {
     $('#tk-hiders').textContent = hidersCount;
   }
 
-  // Handle In-Flow Alert Strip
+  // Out of Zone / 10s Grace / Exposure Logic
   const alertStrip = $('#hud-alert-strip');
   const alertText = $('#hud-alert-text');
   const alertTimer = $('#hud-alert-timer');
@@ -1039,35 +1081,94 @@ function tick() {
       $('#headstart-overlay').classList.add('hide');
 
       const isOutside = pi.center && pos && dist(pos, pi.center) > pi.radius;
-      if (isOutside) {
-        alertStrip.className = 'hud-alert danger';
-        alertText.textContent = 'OUTSIDE SAFE ZONE';
-        alertTimer.textContent = 'RETURN';
-        alertStrip.classList.remove('hide');
 
-        if (Date.now() - lastWarnSound > 8000) {
-          lastWarnSound = Date.now();
-          playBeep(440, 'sawtooth', 0.3);
-          navigator.vibrate && navigator.vibrate(350);
-        }
-      } else if (pi.warn5m) {
-        alertStrip.className = 'hud-alert warn';
-        alertText.textContent = `ZONE SHIFTS TO ${pi.nextRadius}M`;
-        alertTimer.textContent = fmt(pi.timeLeftInPhase);
-        alertStrip.classList.remove('hide');
+      if (isHider) {
+        if (isOutside) {
+          if (!outsideSince) outsideSince = n;
+          const elapsedOutside = (n - outsideSince) / 1000;
 
-        if ((Math.round(pi.timeLeftInPhase) === 300 || Math.round(pi.timeLeftInPhase) === 60) && Date.now() - lastWarnSound > 5000) {
-          lastWarnSound = Date.now();
-          playBeep(700, 'sine', 0.15, 2);
-          navigator.vibrate && navigator.vibrate([150, 80, 150]);
+          if (elapsedOutside < 10) {
+            // 10s Grace Period Countdown
+            const graceLeft = Math.ceil(10 - elapsedOutside);
+            isExposedLocally = false;
+            alertStrip.className = 'hud-alert warn';
+            alertText.textContent = 'OUT OF ZONE: RETURN IN';
+            alertTimer.textContent = `00:0${graceLeft}`;
+            alertStrip.classList.remove('hide');
+
+            if (n - lastWarnSound > 2500) {
+              lastWarnSound = n;
+              playBeep(520, 'sine', 0.12);
+              navigator.vibrate && navigator.vibrate(180);
+            }
+          } else {
+            // Grace expired: EXPOSED! Location broadcast every 10 seconds to seekers
+            isExposedLocally = true;
+            alertStrip.className = 'hud-alert danger';
+            alertText.textContent = 'EXPOSED: LOCATION BROADCASTING';
+            alertTimer.textContent = 'RETURN';
+            alertStrip.classList.remove('hide');
+
+            if (n - lastWarnSound > 4000) {
+              lastWarnSound = n;
+              playBeep(440, 'sawtooth', 0.28);
+              navigator.vibrate && navigator.vibrate([250, 100, 250]);
+            }
+
+            // Force location update to seekers every 10 seconds
+            if (n - lastExposedBroadcastTime >= 10000 || !me.exposed) {
+              maybeSendLocation(true);
+            }
+          }
+        } else {
+          // Inside Safe Zone
+          if (outsideSince != null || isExposedLocally || me.exposed) {
+            outsideSince = null;
+            const wasExposed = isExposedLocally || me.exposed;
+            isExposedLocally = false;
+            lastExposedBroadcastTime = 0;
+
+            if (wasExposed) {
+              update(gref('players/' + id), { exposed: false, t: now() });
+              toast('SAFE ZONE RE-ENTERED: Location concealed from seekers');
+              playBeep(660, 'sine', 0.15, 2);
+            }
+          }
+
+          if (pi.warn5m) {
+            alertStrip.className = 'hud-alert warn';
+            alertText.textContent = `ZONE SHIFTS TO ${pi.nextRadius}M`;
+            alertTimer.textContent = fmt(pi.timeLeftInPhase);
+            alertStrip.classList.remove('hide');
+          } else if (rv.on) {
+            alertStrip.className = 'hud-alert info';
+            alertText.textContent = 'REVEAL ACTIVE';
+            alertTimer.textContent = fmt(rv.secs);
+            alertStrip.classList.remove('hide');
+          } else {
+            alertStrip.classList.add('hide');
+          }
         }
-      } else if (rv.on) {
-        alertStrip.className = 'hud-alert info';
-        alertText.textContent = 'REVEAL ACTIVE';
-        alertTimer.textContent = fmt(rv.secs);
-        alertStrip.classList.remove('hide');
       } else {
-        alertStrip.classList.add('hide');
+        // Seeker HUD View
+        if (isOutside) {
+          alertStrip.className = 'hud-alert warn';
+          alertText.textContent = 'OUTSIDE SAFE ZONE';
+          alertTimer.textContent = 'RETURN';
+          alertStrip.classList.remove('hide');
+        } else if (pi.warn5m) {
+          alertStrip.className = 'hud-alert warn';
+          alertText.textContent = `ZONE SHIFTS TO ${pi.nextRadius}M`;
+          alertTimer.textContent = fmt(pi.timeLeftInPhase);
+          alertStrip.classList.remove('hide');
+        } else if (rv.on) {
+          alertStrip.className = 'hud-alert info';
+          alertText.textContent = 'REVEAL ACTIVE';
+          alertTimer.textContent = fmt(rv.secs);
+          alertStrip.classList.remove('hide');
+        } else {
+          alertStrip.classList.add('hide');
+        }
       }
 
       if (hidersCount === 0 && playerList.length > 1 && g.host === id) {
@@ -1086,15 +1187,19 @@ function tick() {
     const lng = pid === id && pos ? pos.lng : p.lng;
     if (lat == null || !vis(p, pid, n)) continue;
 
-    const roleLabel = p.role.toUpperCase();
+    const isExposed = p.role === 'hider' && p.exposed === true;
+    const roleLabel = isExposed ? 'EXPOSED' : p.role.toUpperCase();
+    const dotClass = isExposed ? 'marker-dot exposed' : `marker-dot ${p.role}${pid === id ? ' you' : ''}`;
+    const labelText = isExposed ? `${esc(p.name)} [EXPOSED]` : esc(p.name);
+
     const popupHtml = `
-      <div style="font-weight:700">${esc(p.name)} <span style="font-size:11px;color:var(--text-muted)">[${roleLabel}]</span></div>
+      <div style="font-weight:700">${esc(p.name)} <span style="font-size:11px;color:${isExposed ? 'var(--seeker)' : 'var(--text-muted)'}">[${roleLabel}]</span></div>
       ${dist(pos, {lat,lng}) !== Infinity ? `<div style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted);margin:2px 0 6px">${Math.round(dist(pos, {lat,lng}))}m away</div>` : ''}
       ${getNavLinks(lat, lng, p.name)}
     `;
     want[pid] = {
       ll: [lat, lng],
-      html: `<div class="marker-dot ${p.role}${pid === id ? ' you' : ''}"><span>${esc(p.name)}</span></div>`,
+      html: `<div class="${dotClass}"><span>${labelText}</span></div>`,
       popup: popupHtml
     };
   }
@@ -1270,22 +1375,35 @@ function renderTargetsView(el) {
         </div>
       `;
 
-      h += hiders.map(([pid, p]) => `
-        <div class="hrow">
-          <div class="hrow-main">
-            <div class="hrow-name">${esc(p.name)}</div>
-            <div class="hrow-sub">STATUS: SURVIVING</div>
+      h += hiders.map(([pid, p]) => {
+        let subText = 'STATUS: SURVIVING';
+        let badgeHtml = '<span class="pill hider">HIDDEN</span>';
+        let isExposed = p.exposed === true;
+
+        if (isExposed) {
+          subText = pos && p.lat != null
+            ? `OUT OF ZONE (${Math.round(dist(pos, p))}m away)`
+            : `OUT OF ZONE (EXPOSED)`;
+          badgeHtml = '<span class="pill seeker" style="animation:pulseExposed 1s infinite">EXPOSED</span>';
+        }
+
+        return `
+          <div class="hrow" ${isExposed ? 'style="border-color:rgba(239,68,68,0.5);background:rgba(239,68,68,0.08)"' : ''}>
+            <div class="hrow-main">
+              <div class="hrow-name">${esc(p.name)}</div>
+              <div class="hrow-sub" ${isExposed ? 'style="color:var(--seeker);font-weight:700"' : ''}>${subText}</div>
+            </div>
+            ${badgeHtml}
           </div>
-          <span class="pill hider">HIDDEN</span>
-        </div>
-      `).join('');
+        `;
+      }).join('');
 
     } else {
       // Hider View: Has the tag self button ("I WAS CAUGHT")
       h += `
         <div class="card">
           <h3 style="margin-bottom:4px">${hiders.length} HIDERS SURVIVING</h3>
-          <p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px">Remain inside the moving safe zones. Convert to seeker if tagged.</p>
+          <p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px">Remain inside the moving safe zones. If outside for >10s, location is broadcast to seekers every 10s.</p>
           <button class="danger" data-a="caught" style="width:100%">I WAS CAUGHT</button>
         </div>
       `;
@@ -1521,7 +1639,7 @@ $('#sheet').onclick = async e => {
   }
   else if (a === 'caught') {
     if (confirm('Confirm captured? You will transition to Seeker.')) {
-      await update(gref('players/' + id), { role: 'seeker' });
+      await update(gref('players/' + id), { role: 'seeker', exposed: false });
       toast('Transferred to Seeker squad.');
     }
   }
@@ -1533,10 +1651,8 @@ $('#sheet').onclick = async e => {
     const activeHiders = Object.entries(P).filter(([pid, p]) => p.role === 'hider' && p.lat != null);
     if (activeHiders.length === 0) return toast('No GPS telemetry on surviving hiders yet');
 
-    // Pick a random hider to prevent individual targeting
     const [chosenId, chosenHider] = activeHiders[Math.floor(Math.random() * activeHiders.length)];
 
-    // Add 10-15m random offset so center isn't an exact coordinate pin
     const fuzzDist = Math.random() * 15;
     const fuzzAngle = Math.random() * 2 * Math.PI;
     const R_EARTH = 6371000;
@@ -1548,7 +1664,7 @@ $('#sheet').onclick = async e => {
       target: chosenId,
       lat: Number(fLat.toFixed(6)),
       lng: Number(fLng.toFixed(6)),
-      radius: 20, // 20 meter search sector
+      radius: 60,
       t: now()
     });
     await update(gref('players/' + id), { lastPing: now() });
