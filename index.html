@@ -2,232 +2,290 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Manhunt - Live GPS Tactical Tag</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>MANHUNT</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root{
-  --bg:#09120e;
-  --panel:#122119;
-  --panel-elevated:#192d22;
-  --line:#264232;
-  --ink:#f2efe7;
-  --dim:#8ea394;
-  --hider:#34d399;
-  --seeker:#f87171;
-  --warn:#fbbf24;
-  --danger:#ef4444;
-  --blue:#38bdf8;
-  --gmaps:#4285f4;
-  --amaps:#007aff;
-  --safe-top:max(12px,env(safe-area-inset-top));
-  --safe-bot:max(16px,env(safe-area-inset-bottom));
+  --bg:#090d10;
+  --surface:#10161b;
+  --surface-raised:#172028;
+  --surface-active:#202b36;
+  --line:#22303c;
+  --line-strong:#324455;
+  --text:#f3f6f9;
+  --text-muted:#8a99a8;
+  --text-dim:#5b6a78;
+  --hider:#10b981;
+  --hider-dim:rgba(16,185,129,0.14);
+  --seeker:#ef4444;
+  --seeker-dim:rgba(239,68,68,0.14);
+  --warn:#f59e0b;
+  --warn-dim:rgba(245,158,11,0.14);
+  --blue:#3b82f6;
+  --safe-top:max(10px,env(safe-area-inset-top));
+  --safe-bot:max(14px,env(safe-area-inset-bottom));
+  --font-mono:ui-monospace,"SF Mono",Menlo,Consolas,"Roboto Mono",monospace;
+  --font-sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
 }
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;user-select:none;overflow:hidden}
-#map{position:fixed;inset:0;z-index:0;background:#18281f}
+*{-webkit-box-sizing:border-box;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;width:100%;background:var(--bg);color:var(--text);font:14px/1.45 var(--font-sans);user-select:none;overflow:hidden}
+#map{position:fixed;inset:0;z-index:0;background:#0d1318}
 .hide{display:none!important}
 
-/* Buttons & Inputs */
-button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:12px 16px;background:var(--ink);color:var(--bg);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:opacity .15s,transform .08s}
-button:active{transform:scale(.98)}
-button.alt{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+/* Typography & Base */
+h1,h2,h3,h4{margin:0;font-weight:700;letter-spacing:-0.02em}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+/* Buttons */
+button{font:inherit;font-weight:600;font-size:13px;border:0;border-radius:8px;padding:10px 14px;background:var(--text);color:var(--bg);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:opacity .15s,background-color .15s}
+button:active{opacity:.8}
+button.alt{background:var(--surface-raised);color:var(--text);border:1px solid var(--line)}
+button.alt:hover{background:var(--surface-active)}
 button.sk{background:var(--seeker);color:#fff}
-button.hd{background:var(--hider);color:#052417}
-button.warn{background:var(--warn);color:#2b1900}
-button.danger{background:var(--danger);color:#fff}
-button.sm{padding:7px 11px;font-size:13px;border-radius:8px}
-button:disabled{opacity:.45;cursor:not-allowed;transform:none}
-input,select{font:inherit;width:100%;padding:11px 12px;border-radius:10px;border:1.5px solid var(--line);background:#0b1610;color:var(--ink)}
-input:focus,select:focus{border-color:var(--hider);outline:none}
-label{display:block;font-size:12px;color:var(--dim);margin:8px 0 3px;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+button.hd{background:var(--hider);color:#041a12}
+button.warn{background:var(--warn);color:#1c1102}
+button.danger{background:var(--seeker);color:#fff}
+button.sm{padding:6px 10px;font-size:12px;border-radius:6px;font-weight:600}
+button:disabled{opacity:.4;cursor:not-allowed}
+
+/* Inputs & Form */
+input,select{font:inherit;width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:#090d11;color:var(--text);font-size:14px}
+input:focus,select:focus{border-color:var(--line-strong);outline:none}
+label{display:block;font-size:11px;font-weight:700;color:var(--text-muted);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.05em}
+
+/* Modern Pill Badges */
+.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;font-family:var(--font-mono);white-space:nowrap}
+.pill.hider{background:var(--hider-dim);color:var(--hider);border:1px solid rgba(16,185,129,.3)}
+.pill.seeker{background:var(--seeker-dim);color:var(--seeker);border:1px solid rgba(239,68,68,.3)}
+.pill.host{background:var(--warn-dim);color:var(--warn);border:1px solid rgba(245,158,11,.3)}
+.pill.neutral{background:var(--surface-raised);color:var(--text-muted);border:1px solid var(--line)}
 
 /* Home Screen */
-#home{position:fixed;inset:0;z-index:100;background:var(--bg);padding:var(--safe-top) 22px var(--safe-bot);overflow-y:auto;display:flex;flex-direction:column}
-.home-hero{margin:auto 0;padding:20px 0}
-#home h1{font-size:46px;line-height:1;margin:0 0 6px;letter-spacing:-1.5px;font-weight:900;background:linear-gradient(135deg,#34d399,#38bdf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-#home p{color:var(--dim);margin:0 0 24px;font-size:16px}
-.row{display:flex;gap:10px;margin-top:10px}
+#home{position:fixed;inset:0;z-index:100;background:var(--bg);padding:var(--safe-top) 20px var(--safe-bot);overflow-y:auto;display:flex;flex-direction:column}
+.home-inner{margin:auto 0;max-width:440px;width:100%;align-self:center}
+.home-brand{margin-bottom:28px}
+.home-brand h1{font-size:38px;letter-spacing:-0.04em;font-weight:900;line-height:1}
+.home-brand p{color:var(--text-muted);margin:8px 0 0;font-size:14px;line-height:1.4}
+.row{display:flex;gap:8px;margin-top:8px}
 .row>*{flex:1}
-#cfgwarn{background:#3a2908;border:1.5px solid var(--warn);color:var(--warn);padding:12px;border-radius:10px;margin-top:16px;font-size:13px;line-height:1.4}
+#cfgwarn{background:var(--warn-dim);border:1px solid rgba(245,158,11,.3);color:var(--warn);padding:12px;border-radius:8px;margin-top:16px;font-size:12px;line-height:1.4}
 
-/* Top HUD */
-#top{position:fixed;z-index:30;left:0;right:0;top:0;padding:var(--safe-top) 12px 10px;background:linear-gradient(var(--bg) 60%,rgba(9,18,14,.9) 85%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:flex;gap:10px;align-items:center}
-#top .info{flex:1;min-width:0}
-#top .title-line{display:flex;align-items:center;gap:6px;font-weight:800;font-size:16px}
-#top .meta-line{font-size:12.5px;color:var(--dim);margin-top:2px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.badge{padding:2px 8px;border-radius:99px;font-size:11.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase}
-.badge.hider{background:var(--hider);color:#052417}
-.badge.seeker{background:var(--seeker);color:#fff}
-.badge.host{background:var(--warn);color:#2b1900}
-.top-btns{display:flex;gap:6px}
+/* Header & HUD System */
+#hud-header{position:fixed;z-index:30;left:0;right:0;top:0;padding:var(--safe-top) 10px 0;background:linear-gradient(var(--bg) 80%,rgba(9,13,16,.85) 95%,transparent);pointer-events:none}
+.hud-inner{pointer-events:auto;display:flex;flex-direction:column;gap:6px}
 
-/* Phase Alert Banner */
-#phase-banner{position:fixed;z-index:29;left:10px;right:10px;top:calc(var(--safe-top) + 60px);padding:10px 14px;border-radius:12px;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 8px 24px rgba(0,0,0,.45);animation:slideDown .25s ease-out}
-#phase-banner.warn{background:var(--warn);color:#261500;border:1.5px solid #ffd56b}
-#phase-banner.danger{background:var(--danger);color:#fff;border:1.5px solid #ff7878}
-#phase-banner.info{background:var(--panel-elevated);color:var(--ink);border:1.5px solid var(--line)}
-@keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+/* Top Bar: Room Code + Role + Actions */
+.hud-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;height:38px}
+.hud-meta{display:flex;align-items:center;gap:6px;min-width:0;flex:1;overflow:hidden}
+.hud-code{font-family:var(--font-mono);font-size:13px;font-weight:800;letter-spacing:.05em;color:var(--text);white-space:nowrap}
+.hud-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
 
-/* Out-of-zone persistent warning */
-#zone-warn{position:fixed;z-index:28;left:10px;right:10px;top:calc(var(--safe-top) + 115px);background:var(--danger);color:#fff;padding:10px 14px;border-radius:10px;font-weight:800;text-align:center;box-shadow:0 4px 16px rgba(239,68,68,.4);animation:pulseWarn 1.2s infinite alternate}
-@keyframes pulseWarn{from{transform:scale(1)}to{transform:scale(1.02)}}
+/* Stat Strip (Horizontal Ticker) */
+.hud-ticker{display:grid;grid-template-columns:repeat(4,1fr);background:rgba(16,22,27,.9);border:1px solid var(--line);border-radius:6px;padding:5px 6px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 4px 12px rgba(0,0,0,.4)}
+.ticker-col{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 2px;min-width:0}
+.ticker-col:not(:last-child){border-right:1px solid var(--line)}
+.ticker-label{font-size:9.5px;color:var(--text-dim);font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%}
+.ticker-val{font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%}
+
+/* Alert Banners (Directly in flow, No Overlapping!) */
+.hud-alert{border-radius:6px;padding:7px 10px;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:space-between;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+.hud-alert.warn{background:var(--warn-dim);border:1px solid rgba(245,158,11,.4);color:var(--warn)}
+.hud-alert.danger{background:var(--seeker-dim);border:1px solid rgba(239,68,68,.4);color:var(--seeker)}
+.hud-alert.info{background:rgba(59,130,246,.14);border:1px solid rgba(59,130,246,.4);color:var(--blue)}
+.hud-alert-msg{display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hud-alert-time{font-family:var(--font-mono);font-size:13px;flex-shrink:0}
 
 /* Fullscreen Overlays (Countdown & Headstart) */
-.full-overlay{position:fixed;inset:0;z-index:200;background:rgba(9,18,14,.92);backdrop-filter:blur(10px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;animation:fadeIn .2s ease-out}
-.full-overlay h2{font-size:32px;margin:0 0 10px;font-weight:900}
-.full-overlay .count{font-size:96px;font-weight:900;line-height:1;margin:16px 0;letter-spacing:-3px;font-variant-numeric:tabular-nums}
-.full-overlay p{color:var(--dim);max-width:320px;font-size:16px;margin:0 0 24px}
+.full-overlay{position:fixed;inset:0;z-index:200;background:rgba(9,13,16,.94);backdrop-filter:blur(12px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center}
+.full-overlay h2{font-size:24px;letter-spacing:.02em;text-transform:uppercase;margin:0 0 8px;font-weight:800}
+.full-overlay .count{font-size:84px;font-family:var(--font-mono);font-weight:800;line-height:1;margin:12px 0;letter-spacing:-0.04em}
+.full-overlay p{color:var(--text-muted);max-width:300px;font-size:14px;margin:0 0 20px;line-height:1.4}
 
-/* Bottom Sheet */
-#sheet{position:fixed;z-index:25;left:0;right:0;bottom:0;max-height:78vh;background:var(--panel);border-top:1.5px solid var(--line);border-radius:20px 20px 0 0;padding:10px 14px var(--safe-bot);display:flex;flex-direction:column;box-shadow:0 -10px 30px rgba(0,0,0,.5);transition:transform .2s ease}
-.sheet-handle{width:36px;height:4px;border-radius:99px;background:var(--line);margin:0 auto 10px;cursor:pointer}
-.tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:12px;overflow-x:auto}
-.tab{flex:1;min-width:60px;padding:8px 6px;border-radius:8px;font-size:13px;font-weight:700;text-align:center;background:transparent;color:var(--dim);border:none;cursor:pointer;position:relative}
-.tab.active{background:var(--panel-elevated);color:var(--ink)}
-.tab .badge-count{position:absolute;top:2px;right:2px;background:var(--seeker);color:#fff;font-size:10px;padding:1px 5px;border-radius:99px}
-.tab-content{overflow-y:auto;flex:1;max-height:56vh}
+/* Bottom Sheet / Panel */
+#sheet{position:fixed;z-index:25;left:0;right:0;bottom:0;max-height:82vh;background:var(--surface);border-top:1px solid var(--line);border-radius:16px 16px 0 0;padding:8px 12px var(--safe-bot);display:flex;flex-direction:column;box-shadow:0 -8px 24px rgba(0,0,0,.6);transition:transform .2s ease}
+.sheet-handle-wrap{width:100%;padding:4px 0 8px;display:flex;justify-content:center;cursor:pointer}
+.sheet-handle{width:36px;height:4px;border-radius:2px;background:var(--line-strong)}
 
-/* Chips & Roster */
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
-.chip{padding:4px 10px;border-radius:99px;border:1.5px solid var(--line);font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:5px;background:#0d1812}
-.chip.seeker{border-color:var(--seeker);color:#fca5a5}
-.chip.hider{border-color:var(--hider);color:#6ee7b7}
-.chip.host{border-color:var(--warn)}
+/* Tab Segmented Control */
+.tabs-control{display:grid;grid-template-columns:repeat(4,1fr);background:#090d11;border:1px solid var(--line);border-radius:8px;padding:2px;margin-bottom:10px}
+.tab-btn{background:transparent;border:0;color:var(--text-dim);font-size:11.5px;font-weight:700;padding:7px 2px;border-radius:6px;text-transform:uppercase;letter-spacing:.04em;text-align:center;position:relative}
+.tab-btn.active{background:var(--surface-raised);color:var(--text)}
+.tab-btn .dot{position:absolute;top:6px;right:6px;width:5px;height:5px;background:var(--seeker);border-radius:50%}
+.tab-content{overflow-y:auto;flex:1;max-height:58vh;padding-top:4px}
 
-/* Target rows */
-.hrow{display:flex;gap:10px;align-items:center;padding:10px;background:#0d1812;border:1px solid var(--line);border-radius:10px;margin-bottom:8px}
-.hrow b{flex:1;font-size:15px}
-.hrow .actions{display:flex;gap:6px}
+/* Cards & Lists */
+.card{background:var(--surface-raised);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:8px}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.hrow{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:9px 10px;background:var(--surface-raised);border:1px solid var(--line);border-radius:8px;margin-bottom:6px}
+.hrow-main{min-width:0;flex:1}
+.hrow-name{font-weight:700;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hrow-sub{font-size:11.5px;color:var(--text-muted);font-family:var(--font-mono)}
+.hrow-actions{display:flex;gap:6px;flex-shrink:0}
 
-/* Chat styles */
-#chat-msgs{display:flex;flex-direction:column;gap:8px;padding-bottom:12px;min-height:160px;max-height:38vh;overflow-y:auto}
-.msg{padding:8px 12px;border-radius:12px;max-width:85%;font-size:14px;background:#182b20;align-self:flex-start}
-.msg.me{background:#234432;align-self:flex-end}
-.msg .meta{font-size:11px;color:var(--dim);margin-bottom:3px;display:flex;gap:6px;align-items:center}
-.chat-presets{display:flex;gap:6px;overflow-x:auto;padding:6px 0 10px}
-.preset-btn{background:#0e1c14;border:1px solid var(--line);color:var(--dim);padding:5px 9px;border-radius:99px;font-size:12px;white-space:nowrap;cursor:pointer}
-.preset-btn:hover{color:var(--ink);border-color:var(--hider)}
-.chat-bar{display:flex;gap:8px}
-.chat-bar input{flex:1}
+/* Modern Chip List */
+.chip-grid{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
 
-/* Map Markers */
-.dot{width:18px;height:18px;border-radius:50%;background:var(--hider);border:2.5px solid #052417;position:relative;box-shadow:0 0 0 2px rgba(52,211,153,.35)}
-.dot.seeker{background:var(--seeker);border-color:#3a0d02;box-shadow:0 0 0 2px rgba(248,113,113,.4)}
-.dot.you{box-shadow:0 0 0 6px rgba(242,239,231,.5)}
-.dot.ping{background:rgba(251,191,36,.15);border:3px dashed var(--warn);width:40px;height:40px;margin:-11px 0 0 -11px;box-shadow:none;animation:pingPulse 1.8s infinite}
-@keyframes pingPulse{0%{transform:scale(.95);opacity:1}50%{transform:scale(1.15);opacity:.7}100%{transform:scale(.95);opacity:1}}
-.dot span{position:absolute;left:22px;top:-4px;font-size:12px;font-weight:700;color:#fff;text-shadow:0 0 4px #000,0 0 4px #000;white-space:nowrap;pointer-events:none}
-.dot.ping span{left:44px;top:8px;color:var(--warn)}
+/* Chat View */
+#chat-msgs{display:flex;flex-direction:column;gap:8px;padding:6px 0 10px;min-height:140px;max-height:36vh;overflow-y:auto}
+.msg{padding:8px 11px;border-radius:8px;max-width:85%;font-size:13px;background:var(--surface-raised);border:1px solid var(--line);align-self:flex-start}
+.msg.me{background:rgba(59,130,246,.14);border-color:rgba(59,130,246,.3);align-self:flex-end}
+.msg .meta{font-size:10.5px;color:var(--text-dim);font-family:var(--font-mono);margin-bottom:2px;display:flex;justify-content:space-between;gap:8px}
+.chat-presets{display:flex;gap:5px;overflow-x:auto;padding-bottom:8px;scrollbar-width:none}
+.chat-presets::-webkit-scrollbar{display:none}
+.preset-chip{background:var(--surface-raised);border:1px solid var(--line);color:var(--text-muted);padding:5px 9px;border-radius:6px;font-size:11.5px;font-weight:600;white-space:nowrap;cursor:pointer}
+.preset-chip:active{border-color:var(--line-strong);color:var(--text)}
+.chat-input-bar{display:flex;gap:6px;margin-top:6px}
+.chat-input-bar input{flex:1}
 
-/* Leaflet Popup & Navigation Links */
-.leaflet-popup-content-wrapper{background:var(--panel);color:var(--ink);border:1.5px solid var(--line);border-radius:12px}
-.leaflet-popup-tip{background:var(--panel)}
-.leaflet-popup-content{margin:12px 14px;font-size:14px;line-height:1.35}
-.nav-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
-.nav-link{display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 10px;border-radius:8px;text-decoration:none;font-size:12.5px;font-weight:700;color:#fff}
-.nav-link.gmaps{background:var(--gmaps)}
-.nav-link.amaps{background:var(--amaps)}
-.nav-link:active{opacity:.85}
+/* External Navigation Buttons */
+.nav-row{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.nav-btn{display:flex;align-items:center;justify-content:center;gap:6px;padding:8px;border-radius:6px;text-decoration:none;font-size:11.5px;font-weight:700;color:var(--text);background:var(--surface-raised);border:1px solid var(--line);text-transform:uppercase;letter-spacing:.04em}
+.nav-btn:active{background:var(--surface-active)}
 
-/* Settings Grid */
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+/* Leaflet & Markers */
+.leaflet-popup-content-wrapper{background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.6)}
+.leaflet-popup-tip{background:var(--surface)}
+.leaflet-popup-content{margin:10px 12px;font-size:13px;line-height:1.4}
+.marker-dot{width:16px;height:16px;border-radius:50%;background:var(--hider);border:2px solid #000;position:relative}
+.marker-dot.seeker{background:var(--seeker)}
+.marker-dot.you{box-shadow:0 0 0 5px rgba(243,246,249,.4)}
+.marker-dot.ping{background:transparent;border:2.5px dashed var(--warn);width:36px;height:36px;margin:-10px 0 0 -10px;box-shadow:none;animation:pulsePing 1.8s infinite}
+@keyframes pulsePing{0%{transform:scale(.95);opacity:1}50%{transform:scale(1.2);opacity:.6}100%{transform:scale(.95);opacity:1}}
+.marker-dot span{position:absolute;left:20px;top:-4px;font-size:11px;font-weight:700;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap;pointer-events:none;font-family:var(--font-mono)}
+.marker-dot.ping span{left:38px;top:6px;color:var(--warn)}
+
+/* Grid Settings */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 
 /* Toast */
-#toast{position:fixed;z-index:300;left:16px;right:16px;top:20%;text-align:center;font-weight:800;font-size:17px;background:var(--warn);color:#2b1900;padding:14px 18px;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.5);display:none;pointer-events:none;animation:toastIn .2s ease-out}
-@keyframes toastIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+#toast{position:fixed;z-index:300;left:16px;right:16px;top:18%;text-align:center;font-weight:700;font-size:13px;background:var(--surface-raised);color:var(--text);border:1px solid var(--line-strong);padding:10px 14px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.7);display:none;pointer-events:none}
 </style>
 </head>
 <body>
 
 <div id="map"></div>
 
-<!-- Home / Join Screen -->
+<!-- Top HUD (Zero Overlapping, Strictly Controlled Widths) -->
+<header id="hud-header" class="hide">
+  <div class="hud-inner">
+    
+    <!-- Top Identity / Action Row -->
+    <div class="hud-bar">
+      <div class="hud-meta">
+        <span class="hud-code" id="gcode">ROOM ----</span>
+        <span id="me-badge" class="pill neutral">HIDER</span>
+      </div>
+      <div class="hud-actions">
+        <button id="center-btn" class="alt sm" title="Center on GPS">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>
+          <span>ME</span>
+        </button>
+        <button id="sheet-toggle" class="alt sm" title="Toggle Menu">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 15h18M9 3v18"/></svg>
+          <span>MENU</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Ticker Strip: 4 Fixed Columns with Monospace Tabular Figures -->
+    <div class="hud-ticker">
+      <div class="ticker-col">
+        <span class="ticker-label">PHASE</span>
+        <span class="ticker-val" id="tk-phase">--</span>
+      </div>
+      <div class="ticker-col">
+        <span class="ticker-label">RADIUS</span>
+        <span class="ticker-val" id="tk-radius">--</span>
+      </div>
+      <div class="ticker-col">
+        <span class="ticker-label">SHRINK</span>
+        <span class="ticker-val" id="tk-shrink">--:--</span>
+      </div>
+      <div class="ticker-col">
+        <span class="ticker-label">HIDERS</span>
+        <span class="ticker-val" id="tk-hiders">--</span>
+      </div>
+    </div>
+
+    <!-- Dynamic In-Flow Alert (Out-of-zone, 5-minute warning, or Seeker hold) -->
+    <div id="hud-alert-strip" class="hud-alert warn hide">
+      <div class="hud-alert-msg">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span id="hud-alert-text">ZONE WARNING</span>
+      </div>
+      <span class="hud-alert-time" id="hud-alert-timer">00:00</span>
+    </div>
+
+  </div>
+</header>
+
+<!-- Home Screen -->
 <div id="home">
-  <div class="home-hero">
-    <h1>Manhunt</h1>
-    <p>Live GPS tactical hunt. Hiders run and scatter, seekers hunt. Every catch converts a seeker.</p>
-    
-    <label for="name">Your codename</label>
-    <input id="name" maxlength="14" autocomplete="off" placeholder="e.g. Ghost, Maverick">
-    
-    <div class="row"><button id="create">Create New Game</button></div>
-    
-    <label for="code" style="margin-top:20px">Or enter 4-letter game code</label>
+  <div class="home-inner">
+    <div class="home-brand">
+      <h1>MANHUNT</h1>
+      <p>Tactical real-time GPS tag. Stepped shrinking safe zones, throttled telemetry, and role-based tactical communication.</p>
+    </div>
+
+    <label for="name">Operator Codename</label>
+    <input id="name" maxlength="14" autocomplete="off" placeholder="Codename">
+
+    <div class="row">
+      <button id="create">Create Room</button>
+    </div>
+
+    <label for="code" style="margin-top:20px">Join Existing Room</label>
     <div class="row">
       <input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="ABCD">
-      <button id="join" class="alt">Join Game</button>
+      <button id="join" class="alt">Join</button>
     </div>
-    
+
     <div id="cfgwarn" class="hide">
-      <b>Firebase Setup Required:</b> Please check your Firebase configuration in CFG at the top of the script in index.html.
+      Firebase configuration missing. Verify CFG settings in index.html.
     </div>
   </div>
 </div>
-
-<!-- Top HUD -->
-<div id="top" class="hide">
-  <div class="info">
-    <div class="title-line">
-      <span id="gcode"></span>
-      <span id="me-badge" class="badge"></span>
-      <span id="counts-badge" style="font-size:13px;color:var(--dim);font-weight:600"></span>
-    </div>
-    <div class="meta-line" id="status-line">Connecting...</div>
-  </div>
-  <div class="top-btns">
-    <button id="center-btn" class="alt sm" title="Center on my location">📍 Me</button>
-    <button id="sheet-toggle" class="alt sm">📋 Menu</button>
-  </div>
-</div>
-
-<!-- Phase & Event Banner -->
-<div id="phase-banner" class="hide">
-  <span id="phase-banner-text"></span>
-  <span id="phase-banner-time" style="font-family:monospace;font-size:15px;margin-left:10px"></span>
-</div>
-
-<!-- Out of zone warning banner -->
-<div id="zone-warn" class="hide">⚠️ OUTSIDE SAFE ZONE! Return immediately!</div>
 
 <!-- Fullscreen Countdown for Game Start -->
 <div id="start-overlay" class="full-overlay hide">
-  <h2>Game Starting</h2>
+  <h2>DEPLOYMENT COUNTDOWN</h2>
   <div class="count" id="start-count">5</div>
-  <p>Prepare your gear! Game is initializing...</p>
+  <p>Synchronizing operational grid and GPS fix...</p>
 </div>
 
-<!-- Fullscreen Seeker Hold Overlay (Seeker Headstart) -->
+<!-- Fullscreen Seeker Hold Overlay -->
 <div id="headstart-overlay" class="full-overlay hide">
-  <h2 style="color:var(--seeker)">🛑 SEEKER HOLD</h2>
+  <h2 style="color:var(--seeker)">SEEKER HOLD IN EFFECT</h2>
   <div class="count" id="headstart-count" style="color:var(--seeker)">120</div>
-  <p>Hiders have a headstart to scatter and take cover! Hold position at base until release.</p>
+  <p>Hiders are scattering into the zone. Remain at base until release authorization.</p>
 </div>
 
 <!-- Closed Game Overlay -->
 <div id="closed-overlay" class="full-overlay hide">
-  <h2>Game Ended</h2>
-  <p id="closed-reason">The host has closed the lobby.</p>
-  <button id="closed-exit" class="hd">Return to Home</button>
+  <h2>SESSION CONCLUDED</h2>
+  <p>The host has officially closed this room.</p>
+  <button id="closed-exit">Exit to Menu</button>
 </div>
 
 <!-- Bottom Drawer / Sheet -->
 <div id="sheet" class="hide">
-  <div class="sheet-handle" id="sheet-handle"></div>
-  
-  <div class="tabs">
-    <button class="tab active" data-tab="targets" id="tab-btn-targets">Hunt</button>
-    <button class="tab" data-tab="chat" id="tab-btn-chat">Team Chat <span class="badge-count hide" id="chat-badge">0</span></button>
-    <button class="tab" data-tab="roster" id="tab-btn-roster">Players (<span id="tab-count">0</span>)</button>
-    <button class="tab" data-tab="settings" id="tab-btn-settings">Settings</button>
+  <div class="sheet-handle-wrap" id="sheet-handle">
+    <div class="sheet-handle"></div>
+  </div>
+
+  <div class="tabs-control">
+    <button class="tab-btn active" data-tab="targets" id="tab-btn-targets">HUNT</button>
+    <button class="tab-btn" data-tab="chat" id="tab-btn-chat">COMMS <span class="dot hide" id="chat-badge"></span></button>
+    <button class="tab-btn" data-tab="roster" id="tab-btn-roster">ROSTER (<span id="tab-count">0</span>)</button>
+    <button class="tab-btn" data-tab="settings" id="tab-btn-settings">CONFIG</button>
   </div>
 
   <div class="tab-content" id="tab-content">
-    <!-- Populated dynamically via JS -->
+    <!-- Populated via JavaScript -->
   </div>
 </div>
 
-<!-- Audio chime & notification toast -->
 <div id="toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -235,7 +293,6 @@ label{display:block;font-size:12px;color:var(--dim);margin:8px 0 3px;text-transf
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {getDatabase,ref,set,update,onValue,get,push,remove,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-// 1) Firebase Configuration
 const CFG = {
   apiKey: "AIzaSyAyEXD7UlocCaAdv2iI_5S-mTFIVuY8h5M",
   authDomain: "manhunt-76fb0.firebaseapp.com",
@@ -246,7 +303,7 @@ const CFG = {
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fmt = s => { s = Math.max(0, Math.round(s)); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); };
+const fmt = s => { s = Math.max(0, Math.round(s)); return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0'); };
 const dist = (a, b) => {
   if (!a || !b || a.lat == null || b.lat == null) return Infinity;
   const t = Math.PI/180, R = 6371000;
@@ -273,7 +330,7 @@ let g = null;
 let P = {};
 let pings = {};
 let chatMsgs = [];
-let unreadChatCount = 0;
+let hasUnreadChat = false;
 let currentTab = 'targets';
 let off = 0;
 let pos = null;
@@ -300,14 +357,14 @@ function getNavLinks(lat, lng, label = 'Location') {
   const gmaps = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=walking`;
   const amaps = `https://maps.apple.com/?daddr=${lat},${lng}&q=${enc}&dirflg=w`;
   return `
-    <div class="nav-grid">
-      <a href="${gmaps}" target="_blank" rel="noopener" class="nav-link gmaps">Google Maps</a>
-      <a href="${amaps}" target="_blank" rel="noopener" class="nav-link amaps">Apple Maps</a>
+    <div class="nav-row">
+      <a href="${gmaps}" target="_blank" rel="noopener" class="nav-btn">Google Maps</a>
+      <a href="${amaps}" target="_blank" rel="noopener" class="nav-btn">Apple Maps</a>
     </div>
   `;
 }
 
-// Web Audio API synthesizers for tactical beeps/alarms
+// Tactical Web Audio beeps
 function initAudio() {
   if (!audioCtx) {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -317,7 +374,7 @@ function initAudio() {
     audioCtx.resume();
   }
 }
-function playBeep(freq = 600, type = 'sine', duration = 0.15, count = 1) {
+function playBeep(freq = 600, type = 'sine', duration = 0.12, count = 1) {
   try {
     initAudio();
     if (!audioCtx) return;
@@ -336,7 +393,7 @@ function playBeep(freq = 600, type = 'sine', duration = 0.15, count = 1) {
   } catch(e){}
 }
 
-function toast(t, ms = 3800) {
+function toast(t, ms = 3200) {
   const e = $('#toast');
   e.textContent = t;
   e.style.display = 'block';
@@ -344,7 +401,7 @@ function toast(t, ms = 3800) {
   toast.t = setTimeout(() => e.style.display = 'none', ms);
 }
 
-// ---------- Join / Create ----------
+// Join / Create
 $('#create').onclick = () => {
   initAudio();
   const n = nameOk(); if (!n || !configured) return;
@@ -354,7 +411,7 @@ $('#create').onclick = () => {
     r1: 60,
     numPhases: 4,
     phaseMins: 15,
-    headstart: 120, // 2-minute headstart
+    headstart: 120,
     pingCd: 180,
     revEvery: 15,
     revSecs: 60
@@ -371,16 +428,16 @@ $('#join').onclick = async () => {
   initAudio();
   const n = nameOk(); if (!n || !configured) return;
   code = ($('#code').value || '').trim().toUpperCase();
-  if (code.length < 4) return toast('Enter a valid 4-character code');
+  if (code.length < 4) return toast('Enter 4-character room code');
   const s = await get(gref('status'));
-  if (!s.exists()) return toast('Game not found with that code');
-  if (s.val() === 'closed') return toast('This lobby has been closed');
+  if (!s.exists()) return toast('Room not found');
+  if (s.val() === 'closed') return toast('Room has been closed');
   enter(n);
 };
 
 function nameOk() {
   const n = ($('#name').value || '').trim();
-  if (!n) { toast('Enter your codename first'); return null; }
+  if (!n) { toast('Enter your codename'); return null; }
   ls('mh_name', n);
   return n;
 }
@@ -399,7 +456,7 @@ async function enter(name) {
   const pr = gref('players/' + id);
   const ex = await get(pr);
   const st = (await get(gref('status'))).val();
-  
+
   if (!ex.exists()) {
     await set(pr, { name, role: st === 'lobby' ? 'hider' : 'seeker', joinedAt: serverTimestamp() });
   } else {
@@ -407,14 +464,13 @@ async function enter(name) {
   }
 
   $('#home').classList.add('hide');
-  ['#top', '#sheet'].forEach(s => $(s).classList.remove('hide'));
-  $('#gcode').textContent = 'Code ' + code;
-  
+  ['#hud-header', '#sheet'].forEach(s => $(s).classList.remove('hide'));
+  $('#gcode').textContent = 'ROOM ' + code;
+
   initMap();
 
   onValue(ref(db, '.info/serverTimeOffset'), s => off = s.val() || 0);
 
-  // Main game state listener
   onValue(gref(), s => {
     g = s.val();
     if (!g || g.status === 'closed') {
@@ -423,15 +479,15 @@ async function enter(name) {
     }
     P = g.players || {};
     pings = g.pings || {};
-    
-    // Check new pings
+
+    // Check incoming pings
     for (const [k, p] of Object.entries(pings)) {
       if (seenPings.has(k)) continue;
       seenPings.add(k);
       if (!firstPing && p.target === id && now() - p.t < 25000) {
-        toast('🚨 ALERT: Seekers just pinged your exact location!');
-        playBeep(900, 'sawtooth', 0.25, 3);
-        navigator.vibrate && navigator.vibrate([400, 150, 400]);
+        toast('TARGET IDENTIFIED: Seekers pinged your location');
+        playBeep(880, 'sawtooth', 0.2, 3);
+        navigator.vibrate && navigator.vibrate([350, 150, 350]);
       }
     }
     firstPing = false;
@@ -440,9 +496,7 @@ async function enter(name) {
     tick();
   });
 
-  // Listen to role-based team chat
   setupChatListener();
-
   watchGps();
   setInterval(tick, 1000);
 
@@ -460,23 +514,19 @@ function leave() {
 }
 $('#closed-exit').onclick = leave;
 
-// ---------- Team Chat ----------
-let chatRef = null;
+// Team Chat Listener
 function setupChatListener() {
   const me = P[id];
   const role = me ? me.role : 'hider';
-  const chatPath = `chats/${role}`;
-  
-  onValue(gref(chatPath), s => {
+  onValue(gref(`chats/${role}`), s => {
     const val = s.val() || {};
     chatMsgs = Object.entries(val).map(([k, v]) => ({ id: k, ...v })).sort((a,b) => a.t - b.t);
-    
+
     if (currentTab !== 'chat') {
-      unreadChatCount++;
-      $('#chat-badge').textContent = unreadChatCount;
+      hasUnreadChat = true;
       $('#chat-badge').classList.remove('hide');
     } else {
-      unreadChatCount = 0;
+      hasUnreadChat = false;
       $('#chat-badge').classList.add('hide');
     }
     if (currentTab === 'chat') renderChatView();
@@ -487,23 +537,22 @@ async function sendChatMessage(text) {
   if (!text || !text.trim()) return;
   const me = P[id] || {};
   const role = me.role || 'hider';
-  const msgObj = {
+  await push(gref(`chats/${role}`), {
     uid: id,
     name: me.name || 'Anonymous',
     role,
     text: text.trim(),
     t: now()
-  };
-  await push(gref(`chats/${role}`), msgObj);
-  playBeep(520, 'sine', 0.1);
+  });
+  playBeep(520, 'sine', 0.08);
 }
 
-// ---------- Map & Free Tier Throttled GPS ----------
+// Map Initialization
 function initMap() {
   map = L.map('map', { zoomControl: false }).setView([0, 0], 2);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
-    attribution: '© OpenStreetMap'
+    attribution: 'OpenStreetMap contributors'
   }).addTo(map);
 
   map.on('click', e => {
@@ -516,7 +565,7 @@ function initMap() {
 
 let firstGps = true;
 function watchGps() {
-  if (!navigator.geolocation) return toast('Geolocation is not supported by your browser', 8000);
+  if (!navigator.geolocation) return toast('Geolocation unsupported', 8000);
 
   navigator.geolocation.watchPosition(p => {
     pos = { lat: p.coords.latitude, lng: p.coords.longitude };
@@ -526,13 +575,12 @@ function watchGps() {
     }
 
     // Database & Free Tier Optimization:
-    // Only update Firebase if moved > 15 meters OR > 15 seconds pass
+    // Only update Firebase if moved > 15m OR >= 15 seconds pass
     const t = Date.now();
     const d = lastSentPos ? dist(pos, lastSentPos) : Infinity;
     const dt = t - lastSentTime;
 
     if (d >= 15 || dt >= 15000) {
-      // Debounce rapid bursts
       if (dt >= 3000 || d >= 30) {
         lastSentTime = t;
         lastSentPos = { lat: pos.lat, lng: pos.lng };
@@ -543,21 +591,17 @@ function watchGps() {
         });
       }
     }
-    // Local UI updates smoothly
     tick();
   }, e => {
-    toast('Location access blocked. Please enable GPS permissions for this site.', 8000);
+    toast('Location access denied. Enable GPS permissions.', 8000);
   }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
 }
 
 $('#center-btn').onclick = () => pos && map.setView([pos.lat, pos.lng], 17);
-$('#sheet-toggle').onclick = () => {
-  const S = $('#sheet');
-  S.classList.toggle('hide');
-};
+$('#sheet-toggle').onclick = () => $('#sheet').classList.toggle('hide');
 $('#sheet-handle').onclick = () => $('#sheet').classList.toggle('hide');
 
-// ---------- Increment-Based Zone Shrinking Logic ----------
+// Stepped Shrinking Calculation
 function getPhaseInfo(n) {
   const c = g?.cfg || {};
   const numPhases = Math.max(1, c.numPhases || 4);
@@ -582,7 +626,6 @@ function getPhaseInfo(n) {
 
   const elapsedTotal = Math.max(0, (n - g.startedAt) / 1000);
 
-  // Seeker Headstart period
   if (elapsedTotal < headstart) {
     const headstartLeft = headstart - elapsedTotal;
     const nextRadius = numPhases > 1 ? Math.round(r0 - (1 * (r0 - r1)) / (numPhases - 1)) : r1;
@@ -603,7 +646,7 @@ function getPhaseInfo(n) {
   const currentPhaseIndex = Math.min(numPhases - 1, Math.floor(gameElapsed / phaseSecs));
   const currentPhase = currentPhaseIndex + 1;
 
-  const calcRadius = (idx) => {
+  const calcRadius = idx => {
     if (numPhases <= 1) return r1;
     return Math.round(r0 - (idx * (r0 - r1)) / (numPhases - 1));
   };
@@ -614,8 +657,6 @@ function getPhaseInfo(n) {
 
   const timeSpentInPhase = gameElapsed - (currentPhaseIndex * phaseSecs);
   const timeLeftInPhase = isFinalPhase ? 0 : Math.max(0, phaseSecs - timeSpentInPhase);
-
-  // 5-Minute Warning: triggers when 300 seconds (5 min) or less remain in current phase
   const warn5m = !isFinalPhase && timeLeftInPhase <= 300;
 
   return {
@@ -642,18 +683,15 @@ function reveal(n) {
   return ph < revSecs ? { on: true, secs: revSecs - ph } : { on: false, secs: revEvery - ph };
 }
 
-// Continuous locations hidden:
-// Teammates always see each other.
-// Opponents are hidden EXCEPT during reveal intervals or manual pings.
 function vis(p, pid, n) {
   if (pid === id || !g || g.status !== 'live') return true;
   const myRole = (P[id] || {}).role;
-  if (p.role === myRole) return true; // Teammates see each other
-  if (reveal(n).on) return true;      // Both teams revealed during reveal interval
+  if (p.role === myRole) return true;
+  if (reveal(n).on) return true;
   return false;
 }
 
-// ---------- Main Loop (1s Tick & Smooth UI) ----------
+// Main 1s Tick Loop
 function tick() {
   if (!g || !map) return;
   const n = now();
@@ -661,17 +699,15 @@ function tick() {
   const me = P[id] || {};
   const seeker = me.role === 'seeker';
 
-  // Role Badge & Player Counts
-  $('#me-badge').textContent = seeker ? 'Seeker' : 'Hider';
-  $('#me-badge').className = 'badge ' + (seeker ? 'seeker' : 'hider');
+  // Role pill
+  $('#me-badge').textContent = seeker ? 'SEEKER' : 'HIDER';
+  $('#me-badge').className = 'pill ' + (seeker ? 'seeker' : 'hider');
 
   const playerList = Object.values(P);
   const hidersCount = playerList.filter(p => p.role === 'hider').length;
-  const seekersCount = playerList.filter(p => p.role === 'seeker').length;
-  $('#counts-badge').textContent = `👥 ${playerList.length} (🏃 ${hidersCount} · 🔍 ${seekersCount})`;
   $('#tab-count').textContent = playerList.length;
 
-  // Handle Game Startup 5-second Countdown Overlay
+  // Handle Startup 5s Countdown
   if (g.status === 'starting' && g.startCountdownAt) {
     const startRemain = Math.max(0, Math.ceil(5 - (n - g.startCountdownAt)/1000));
     $('#start-count').textContent = startRemain;
@@ -688,45 +724,42 @@ function tick() {
     $('#start-overlay').classList.add('hide');
   }
 
-  // Phase & Zone Calculation
   const pi = getPhaseInfo(n);
   const rv = reveal(n);
 
-  // Check Phase Step Shift Notification
+  // Stepped Phase Shift Toast
   if (g.status === 'live' && !pi.isHeadstart && pi.phase !== activePhaseIdx) {
     if (activePhaseIdx !== -1) {
-      toast(`🚨 ZONE SHRUNK! Safe zone is now ${pi.radius} meters.`, 5000);
-      playBeep(880, 'triangle', 0.3, 2);
-      navigator.vibrate && navigator.vibrate([300, 100, 300]);
+      toast(`ZONE SHRUNK: Safe zone radius reduced to ${pi.radius}m`);
+      playBeep(880, 'triangle', 0.25, 2);
+      navigator.vibrate && navigator.vibrate([250, 100, 250]);
     }
     activePhaseIdx = pi.phase;
   }
 
-  // Draw Zones on Leaflet Map
+  // Draw Zones on Map
   if (c.center) {
     const centerLatLng = [c.center.lat, c.center.lng];
-    // Main current safe zone
     if (!circle) {
       circle = L.circle(centerLatLng, {
         radius: pi.radius,
-        color: '#f87171',
-        weight: 3,
-        fillColor: '#f87171',
-        fillOpacity: 0.07
+        color: '#ef4444',
+        weight: 2,
+        fillColor: '#ef4444',
+        fillOpacity: 0.06
       }).addTo(map);
     } else {
       circle.setLatLng(centerLatLng);
       circle.setRadius(pi.radius);
     }
 
-    // Step-down Next Phase Preview Circle (dashed ring)
     if (!pi.isFinalPhase && pi.nextRadius < pi.radius) {
       if (!nextCircle) {
         nextCircle = L.circle(centerLatLng, {
           radius: pi.nextRadius,
-          color: '#fbbf24',
-          weight: 2,
-          dashArray: '6, 8',
+          color: '#f59e0b',
+          weight: 1.5,
+          dashArray: '5, 6',
           fillOpacity: 0
         }).addTo(map);
       } else {
@@ -742,25 +775,30 @@ function tick() {
     if (nextCircle) { nextCircle.remove(); nextCircle = null; }
   }
 
-  // Status Line & Banner Updates
-  let statusText = '';
-  const banner = $('#phase-banner');
-  const bannerText = $('#phase-banner-text');
-  const bannerTime = $('#phase-banner-time');
+  // Update Ticker Columns (No text wrapping!)
+  if (g.status === 'live') {
+    $('#tk-phase').textContent = `${pi.phase}/${pi.numPhases}`;
+    $('#tk-radius').textContent = `${pi.radius}M`;
+    $('#tk-shrink').textContent = pi.isFinalPhase ? 'MIN' : fmt(pi.timeLeftInPhase);
+    $('#tk-hiders').textContent = hidersCount;
+  } else {
+    $('#tk-phase').textContent = g.status === 'lobby' ? 'LOBBY' : 'OVER';
+    $('#tk-radius').textContent = `${c.r0 || 500}M`;
+    $('#tk-shrink').textContent = '--:--';
+    $('#tk-hiders').textContent = hidersCount;
+  }
 
-  if (g.status === 'lobby') {
-    statusText = 'Lobby: Waiting for host to configure and start';
-    banner.classList.add('hide');
-  } else if (g.status === 'over') {
-    statusText = 'Game Over';
-    banner.classList.add('hide');
-  } else if (g.status === 'live') {
+  // Handle In-Flow Alert Strip
+  const alertStrip = $('#hud-alert-strip');
+  const alertText = $('#hud-alert-text');
+  const alertTimer = $('#hud-alert-timer');
+
+  if (g.status === 'live') {
     if (pi.isHeadstart) {
-      statusText = `HEADSTART: Seekers released in ${fmt(pi.headstartLeft)}`;
-      banner.className = seeker ? 'danger' : 'info';
-      bannerText.textContent = seeker ? '🛑 SEEKER HOLD: Wait at base' : '🏃 RUN & HIDE: Seekers released soon!';
-      bannerTime.textContent = fmt(pi.headstartLeft);
-      banner.classList.remove('hide');
+      alertStrip.className = 'hud-alert ' + (seeker ? 'danger' : 'info');
+      alertText.textContent = seeker ? 'SEEKER HOLD IN EFFECT' : 'HEADSTART ACTIVE';
+      alertTimer.textContent = fmt(pi.headstartLeft);
+      alertStrip.classList.remove('hide');
 
       if (seeker) {
         $('#headstart-count').textContent = Math.ceil(pi.headstartLeft);
@@ -770,88 +808,89 @@ function tick() {
       }
     } else {
       $('#headstart-overlay').classList.add('hide');
-      statusText = `Phase ${pi.phase}/${pi.numPhases} (${pi.radius}m)`;
-      statusText += pi.isFinalPhase ? ' · Final Zone' : ` · Shrinks in ${fmt(pi.timeLeftInPhase)}`;
-      statusText += rv.on ? ` · 👁️ REVEAL ON (${fmt(rv.secs)})` : ` · Reveal in ${fmt(rv.secs)}`;
 
-      // 5-Minute Warning Banner before each phase shift
-      if (pi.warn5m) {
-        banner.className = 'warn';
-        bannerText.textContent = `⚠️ Zone shrinks to ${pi.nextRadius}m in`;
-        bannerTime.textContent = fmt(pi.timeLeftInPhase);
-        banner.classList.remove('hide');
+      const isOutside = c.center && pos && dist(pos, c.center) > pi.radius;
+      if (isOutside) {
+        alertStrip.className = 'hud-alert danger';
+        alertText.textContent = 'OUTSIDE SAFE ZONE';
+        alertTimer.textContent = 'RETURN';
+        alertStrip.classList.remove('hide');
 
-        // Audio beep alert at 5m mark and 1m mark
+        if (Date.now() - lastWarnSound > 8000) {
+          lastWarnSound = Date.now();
+          playBeep(440, 'sawtooth', 0.3);
+          navigator.vibrate && navigator.vibrate(350);
+        }
+      } else if (pi.warn5m) {
+        alertStrip.className = 'hud-alert warn';
+        alertText.textContent = `SHRINKING TO ${pi.nextRadius}M`;
+        alertTimer.textContent = fmt(pi.timeLeftInPhase);
+        alertStrip.classList.remove('hide');
+
         if ((Math.round(pi.timeLeftInPhase) === 300 || Math.round(pi.timeLeftInPhase) === 60) && Date.now() - lastWarnSound > 5000) {
           lastWarnSound = Date.now();
-          playBeep(750, 'sine', 0.2, 2);
-          navigator.vibrate && navigator.vibrate([200, 100, 200]);
+          playBeep(700, 'sine', 0.15, 2);
+          navigator.vibrate && navigator.vibrate([150, 80, 150]);
         }
+      } else if (rv.on) {
+        alertStrip.className = 'hud-alert info';
+        alertText.textContent = 'REVEAL ACTIVE';
+        alertTimer.textContent = fmt(rv.secs);
+        alertStrip.classList.remove('hide');
       } else {
-        banner.classList.add('hide');
+        alertStrip.classList.add('hide');
       }
 
-      // Safe zone boundary check for the current player
-      if (c.center && pos && dist(pos, c.center) > pi.radius) {
-        $('#zone-warn').classList.remove('hide');
-        if (Date.now() - lastWarnSound > 9000) {
-          lastWarnSound = Date.now();
-          playBeep(450, 'sawtooth', 0.35);
-          navigator.vibrate && navigator.vibrate(400);
-        }
-      } else {
-        $('#zone-warn').classList.add('hide');
-      }
-
-      // Check win condition (all hiders caught)
       if (hidersCount === 0 && playerList.length > 1 && g.host === id) {
         update(gref(), { status: 'over', endedAt: serverTimestamp() });
       }
     }
+  } else {
+    alertStrip.classList.add('hide');
+    $('#headstart-overlay').classList.add('hide');
   }
-  $('#status-line').textContent = statusText;
 
-  // Render Map Markers (Players & Pings)
+  // Map Markers
   const want = {};
   for (const [pid, p] of Object.entries(P)) {
-    // Determine player coordinates: use live pos for self for smooth rendering
     const lat = pid === id && pos ? pos.lat : p.lat;
     const lng = pid === id && pos ? pos.lng : p.lng;
     if (lat == null || !vis(p, pid, n)) continue;
 
-    const popupContent = `
-      <b>${esc(p.name)}</b> (${p.role})<br>
-      ${dist(pos, {lat,lng}) !== Infinity ? `${Math.round(dist(pos, {lat,lng}))}m away` : ''}
+    const roleLabel = p.role.toUpperCase();
+    const popupHtml = `
+      <div style="font-weight:700">${esc(p.name)} <span style="font-size:11px;color:var(--text-muted)">[${roleLabel}]</span></div>
+      ${dist(pos, {lat,lng}) !== Infinity ? `<div style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted);margin:2px 0 6px">${Math.round(dist(pos, {lat,lng}))}m away</div>` : ''}
       ${getNavLinks(lat, lng, p.name)}
     `;
     want[pid] = {
       ll: [lat, lng],
-      html: `<div class="dot ${p.role}${pid === id ? ' you' : ''}"><span>${esc(p.name)}</span></div>`,
-      popup: popupContent
+      html: `<div class="marker-dot ${p.role}${pid === id ? ' you' : ''}"><span>${esc(p.name)}</span></div>`,
+      popup: popupHtml
     };
   }
 
-  // Ping markers for seekers
+  // Ping Markers
   if (g.status === 'live' && seeker) {
     for (const [k, p] of Object.entries(pings)) {
-      if (n - p.t > 30000) continue; // Pings expire after 30 seconds
+      if (n - p.t > 30000) continue;
       const targetP = P[p.target];
       const targetName = targetP ? targetP.name : 'Target';
       const ageSecs = Math.round((n - p.t)/1000);
       const pingPopup = `
-        <b>🚨 Pinged: ${esc(targetName)}</b><br>
-        Pinged ${ageSecs}s ago<br>
+        <div style="font-weight:700">PING: ${esc(targetName)}</div>
+        <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted);margin:2px 0 6px">${ageSecs}s ago</div>
         ${getNavLinks(p.lat, p.lng, `Ping: ${targetName}`)}
       `;
       want['ping_' + k] = {
         ll: [p.lat, p.lng],
-        html: `<div class="dot ping"><span>${esc(targetName)} (${ageSecs}s)</span></div>`,
+        html: `<div class="marker-dot ping"><span>${esc(targetName)} (${ageSecs}s)</span></div>`,
         popup: pingPopup
       };
     }
   }
 
-  // Clean old markers
+  // Remove old markers
   for (const k of Object.keys(markers)) {
     if (!want[k]) {
       markers[k].remove();
@@ -859,39 +898,39 @@ function tick() {
     }
   }
 
-  // Add / Update markers
+  // Update/Add markers
   for (const [k, item] of Object.entries(want)) {
     if (!markers[k]) {
       markers[k] = L.marker(item.ll, {
-        icon: L.divIcon({ className: '', html: item.html, iconSize: [18, 18] })
+        icon: L.divIcon({ className: '', html: item.html, iconSize: [16, 16] })
       }).addTo(map);
       if (item.popup) markers[k].bindPopup(item.popup);
     } else {
       markers[k].setLatLng(item.ll);
       if (markers[k]._html !== item.html) {
-        markers[k].setIcon(L.divIcon({ className: '', html: item.html, iconSize: [18, 18] }));
+        markers[k].setIcon(L.divIcon({ className: '', html: item.html, iconSize: [16, 16] }));
         markers[k]._html = item.html;
       }
       if (item.popup) markers[k].setPopupContent(item.popup);
     }
   }
 
-  // Update ping button cooldown timers in UI
+  // Ping buttons cooldown
   const remPing = (c.pingCd || 180) - (n - (me.lastPing || 0)) / 1000;
   document.querySelectorAll('.pbtn').forEach(b => {
     b.disabled = remPing > 0 || pi.isHeadstart;
-    b.textContent = pi.isHeadstart ? 'Hold' : (remPing > 0 ? fmt(remPing) : 'Ping');
+    b.textContent = pi.isHeadstart ? 'HOLD' : (remPing > 0 ? fmt(remPing) : 'PING');
   });
 }
 
-// ---------- Panel Tabs & Rendering ----------
-document.querySelectorAll('.tab').forEach(tab => {
+// Panel Tabs
+document.querySelectorAll('.tab-btn').forEach(tab => {
   tab.onclick = () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
     currentTab = tab.dataset.tab;
     if (currentTab === 'chat') {
-      unreadChatCount = 0;
+      hasUnreadChat = false;
       $('#chat-badge').classList.add('hide');
     }
     renderPanel();
@@ -901,7 +940,6 @@ document.querySelectorAll('.tab').forEach(tab => {
 function renderPanel() {
   const container = $('#tab-content');
   if (!g) return;
-
   if (currentTab === 'targets') renderTargetsView(container);
   else if (currentTab === 'chat') renderChatView(container);
   else if (currentTab === 'roster') renderRosterView(container);
@@ -913,79 +951,81 @@ function renderTargetsView(el) {
   const me = P[id] || {};
   const list = Object.entries(P);
   const hiders = list.filter(([,p]) => p.role === 'hider');
-  const seekers = list.filter(([,p]) => p.role === 'seeker');
   let h = '';
 
   if (g.status === 'lobby') {
     h += `
-      <div style="text-align:center;padding:10px 0">
-        <h3 style="margin:0 0 4px">Game Lobby</h3>
-        <p style="color:var(--dim);margin:0 0 14px">Share code <b style="color:var(--ink);font-size:18px">${code}</b> with other players.</p>
+      <div class="card" style="text-align:center">
+        <h3 style="margin-bottom:4px">LOBBY</h3>
+        <p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px">Room code <span style="color:var(--text);font-family:var(--font-mono);font-weight:700">${code}</span></p>
         
-        <div class="row" style="margin-bottom:12px">
-          <button class="hd" data-a="setrole" data-r="hider" ${me.role === 'hider' ? 'disabled' : ''}>🏃 Be Hider</button>
-          <button class="sk" data-a="setrole" data-r="seeker" ${me.role === 'seeker' ? 'disabled' : ''}>🔍 Be Seeker</button>
+        <div class="row">
+          <button class="hd" data-a="setrole" data-r="hider" ${me.role === 'hider' ? 'disabled' : ''}>JOIN HIDERS</button>
+          <button class="sk" data-a="setrole" data-r="seeker" ${me.role === 'seeker' ? 'disabled' : ''}>JOIN SEEKERS</button>
         </div>
       </div>
     `;
 
     if (g.host === id) {
       h += `
-        <div style="background:#0d1812;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:14px">
-          <div style="font-weight:700;margin-bottom:6px">👑 Host / Referee Controls</div>
-          <p style="font-size:13px;color:var(--dim);margin:0 0 10px">Set the safe zone center on map, then start when ready.</p>
-          <div class="row">
-            <button class="alt sm" data-a="mycenter">📍 Zone at my GPS</button>
-            <button class="alt sm" data-a="randomize">🎲 Randomize Teams</button>
+        <div class="card">
+          <div class="card-header">
+            <span style="font-weight:700;font-size:12px;text-transform:uppercase;color:var(--warn)">Host Controls</span>
+            <span class="pill host">HOST</span>
           </div>
-          <button class="hd" data-a="start-countdown" style="width:100%;margin-top:10px;font-size:16px">▶️ Start Game</button>
+          <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">Set safe zone center on map, then start when players join.</p>
+          <div class="row">
+            <button class="alt sm" data-a="mycenter">SET TO GPS</button>
+            <button class="alt sm" data-a="randomize">RANDOMIZE</button>
+          </div>
+          <button class="hd" data-a="start-countdown" style="width:100%;margin-top:8px">START GAME</button>
         </div>
       `;
     }
   } else if (g.status === 'live') {
     if (me.role === 'seeker') {
       h += `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <h3 style="margin:0">${hiders.length} Hider${hiders.length === 1 ? '' : 's'} Remaining</h3>
-          <span style="font-size:12px;color:var(--dim)">Ping reveals location for 30s</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-weight:700;font-size:12px;text-transform:uppercase">${hiders.length} ACTIVE HIDERS</span>
+          <span style="font-size:11px;color:var(--text-dim);font-family:var(--font-mono)">30s PING DURATION</span>
         </div>
       `;
       h += hiders.map(([pid, p]) => `
         <div class="hrow">
-          <div>
-            <b>${esc(p.name)}</b>
-            <div style="font-size:12px;color:var(--dim)">${p.lat != null && pos ? `${Math.round(dist(pos, p))}m away` : 'Active'}</div>
+          <div class="hrow-main">
+            <div class="hrow-name">${esc(p.name)}</div>
+            <div class="hrow-sub">${p.lat != null && pos ? `${Math.round(dist(pos, p))}m away` : 'Active'}</div>
           </div>
-          <div class="actions">
-            <button class="pbtn sk sm" data-a="ping" data-id="${pid}">Ping</button>
-            <button class="alt sm" data-a="tag" data-id="${pid}">Caught</button>
+          <div class="hrow-actions">
+            <button class="pbtn sk sm" data-a="ping" data-id="${pid}">PING</button>
+            <button class="alt sm" data-a="tag" data-id="${pid}">TAG</button>
           </div>
         </div>
       `).join('');
     } else {
       h += `
-        <div style="margin-bottom:14px">
-          <h3 style="margin:0 0 6px">${hiders.length} Hider${hiders.length === 1 ? '' : 's'} Alive</h3>
-          <p style="color:var(--dim);font-size:13px;margin:0 0 12px">Stay inside the safe zone. Seekers only show on map during scheduled reveals.</p>
-          <button class="sk" data-a="caught" style="width:100%">🚨 I Was Caught (Become Seeker)</button>
+        <div class="card">
+          <h3 style="margin-bottom:4px">${hiders.length} HIDERS SURVIVING</h3>
+          <p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px">Remain inside safe zone. Opponents hidden except during scheduled reveal periods.</p>
+          <button class="danger" data-a="caught" style="width:100%">I WAS CAUGHT</button>
         </div>
       `;
     }
 
     if (g.cfg && g.cfg.center) {
       h += `
-        <div style="border-top:1px solid var(--line);padding-top:10px;margin-top:12px">
-          <div style="font-size:12px;color:var(--dim);margin-bottom:6px">🧭 QUICK NAVIGATION TO ZONE CENTER:</div>
+        <div class="card" style="margin-top:10px">
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Zone Center Navigation</div>
           ${getNavLinks(g.cfg.center.lat, g.cfg.center.lng, 'Zone Center')}
         </div>
       `;
     }
   } else {
     h += `
-      <div style="text-align:center;padding:12px 0">
-        <h3>Game Over</h3>
-        <p style="color:var(--dim)">${hiders.length === 0 ? 'Every hider was captured! Seekers win!' : 'Game was concluded.'}</p>
-        ${g.host === id ? '<button class="hd" data-a="again" style="width:100%;margin-bottom:10px">🔄 Play Again (Reset Lobby)</button>' : ''}
+      <div class="card" style="text-align:center">
+        <h3>GAME CONCLUDED</h3>
+        <p style="color:var(--text-muted);font-size:13px;margin:8px 0 14px">${hiders.length === 0 ? 'All hiders captured. Seekers win.' : 'Session concluded by host.'}</p>
+        ${g.host === id ? '<button class="hd" data-a="again" style="width:100%;margin-bottom:8px">RESET LOBBY</button>' : ''}
       </div>
     `;
   }
@@ -993,40 +1033,45 @@ function renderTargetsView(el) {
   el.innerHTML = h;
 }
 
-// Tab 2: Dedicated Team Chat View
+// Tab 2: Dedicated Team Chat
 function renderChatView(el) {
   if (!el) el = $('#tab-content');
   const me = P[id] || {};
   const role = me.role || 'hider';
-  const roleName = role === 'seeker' ? '🔍 Seeker Hunt Chat' : '🏃 Hider Squad Chat';
+  const roleLabel = role === 'seeker' ? 'SEEKER CHANNEL' : 'HIDER CHANNEL';
 
   const presets = role === 'seeker'
-    ? ['Hider spotted!', 'Need backup!', 'Moving towards center', 'Checking buildings', 'All clear here']
-    : ['Seeker near me!', 'Safe spot found', 'Moving inwards', 'Splitting up', 'Stay low'];
+    ? ['Spotted seeker', 'Need backup', 'Moving north', 'Checking center', 'Safe here']
+    : ['Seeker near me', 'Safe spot', 'Moving inward', 'Regrouping', 'Stay low'];
 
   let h = `
-    <div style="font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between">
-      <span>${roleName}</span>
-      <span style="font-size:12px;color:var(--dim)">Only your team sees this</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span style="font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em">${roleLabel}</span>
+      <span class="pill ${role}">SECURE</span>
     </div>
-    
+
     <div class="chat-presets">
-      ${presets.map(p => `<button class="preset-btn" data-a="preset" data-text="${esc(p)}">${esc(p)}</button>`).join('')}
+      ${presets.map(p => `<button class="preset-chip" data-a="preset" data-text="${esc(p)}">${esc(p)}</button>`).join('')}
     </div>
 
     <div id="chat-msgs">
-      ${chatMsgs.length === 0 ? '<div style="color:var(--dim);text-align:center;padding:20px">No messages yet. Coordinate with your team!</div>' : ''}
+      ${chatMsgs.length === 0 ? '<div style="color:var(--text-dim);text-align:center;padding:24px;font-size:12.5px">No transmissions yet.</div>' : ''}
       ${chatMsgs.map(m => `
         <div class="msg ${m.uid === id ? 'me' : ''}">
-          <div class="meta"><b>${esc(m.name)}</b> · ${new Date(m.t).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
+          <div class="meta">
+            <span>${esc(m.name)}</span>
+            <span>${new Date(m.t).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span>
+          </div>
           <div>${esc(m.text)}</div>
         </div>
       `).join('')}
     </div>
 
-    <form class="chat-bar" id="chat-form">
-      <input id="chat-input" placeholder="Type tactical message..." autocomplete="off" maxlength="120">
-      <button type="submit" class="sm ${role === 'seeker' ? 'sk' : 'hd'}">Send</button>
+    <form class="chat-input-bar" id="chat-form">
+      <input id="chat-input" placeholder="Transmit message..." autocomplete="off" maxlength="120">
+      <button type="submit" class="sm ${role === 'seeker' ? 'sk' : 'hd'}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
     </form>
   `;
 
@@ -1039,11 +1084,13 @@ function renderChatView(el) {
 function renderRosterView(el) {
   const list = Object.entries(P);
   let h = `
-    <div style="margin-bottom:10px;font-weight:700">Active Roster (${list.length})</div>
-    <div class="chips">
+    <div class="card-header">
+      <span style="font-weight:700;font-size:12px;text-transform:uppercase">OPERATORS (${list.length})</span>
+    </div>
+    <div class="chip-grid">
       ${list.map(([pid, p]) => `
-        <span class="chip ${p.role} ${g.host === pid ? 'host' : ''}">
-          ${g.host === pid ? '👑 ' : ''}${esc(p.name)} (${p.role})
+        <span class="pill ${p.role}">
+          ${esc(p.name)} [${p.role.toUpperCase()}] ${g.host === pid ? '[HOST]' : ''}
         </span>
       `).join('')}
     </div>
@@ -1051,12 +1098,12 @@ function renderRosterView(el) {
 
   if (g.status === 'lobby' && g.host === id) {
     h += `
-      <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px">
-        <div style="font-size:13px;font-weight:700;margin-bottom:8px">Host Player Management</div>
+      <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px">Host Role Reassignment</div>
         ${list.map(([pid, p]) => `
           <div class="hrow">
-            <b>${esc(p.name)}</b>
-            <button class="alt sm" data-a="toggle-player-role" data-id="${pid}">Make ${p.role === 'hider' ? 'Seeker' : 'Hider'}</button>
+            <span class="hrow-name">${esc(p.name)}</span>
+            <button class="alt sm" data-a="toggle-role" data-id="${pid}">MAKE ${p.role === 'hider' ? 'SEEKER' : 'HIDER'}</button>
           </div>
         `).join('')}
       </div>
@@ -1065,14 +1112,17 @@ function renderRosterView(el) {
   el.innerHTML = h;
 }
 
-// Tab 4: Settings / Ref Flow / Host Controls
+// Tab 4: Settings View
 function renderSettingsView(el) {
   const c = g.cfg || {};
   const isHost = g.host === id;
 
   let h = `
-    <h3 style="margin:0 0 10px">Game Configuration</h3>
-    <div class="grid">
+    <div class="card-header">
+      <span style="font-weight:700;font-size:12px;text-transform:uppercase">Room Parameters</span>
+      ${isHost ? '<span class="pill host">HOST EDITABLE</span>' : '<span class="pill neutral">READ ONLY</span>'}
+    </div>
+    <div class="grid-2">
       <div>
         <label>Start Radius (m)</label>
         <input type="number" data-k="r0" value="${c.r0 || 500}" ${!isHost ? 'disabled' : ''}>
@@ -1082,15 +1132,15 @@ function renderSettingsView(el) {
         <input type="number" data-k="r1" value="${c.r1 || 60}" ${!isHost ? 'disabled' : ''}>
       </div>
       <div>
-        <label>Shrink Steps (Phases)</label>
+        <label>Phases</label>
         <input type="number" data-k="numPhases" value="${c.numPhases || 4}" ${!isHost ? 'disabled' : ''}>
       </div>
       <div>
-        <label>Mins Per Phase</label>
+        <label>Phase Mins</label>
         <input type="number" data-k="phaseMins" value="${c.phaseMins || 15}" ${!isHost ? 'disabled' : ''}>
       </div>
       <div>
-        <label>Headstart (Secs)</label>
+        <label>Headstart (s)</label>
         <input type="number" data-k="headstart" value="${c.headstart || 120}" ${!isHost ? 'disabled' : ''}>
       </div>
       <div>
@@ -1098,7 +1148,7 @@ function renderSettingsView(el) {
         <input type="number" data-k="pingCd" value="${c.pingCd || 180}" ${!isHost ? 'disabled' : ''}>
       </div>
       <div>
-        <label>Reveal Every (min)</label>
+        <label>Reveal Every (m)</label>
         <input type="number" data-k="revEvery" value="${c.revEvery || 15}" ${!isHost ? 'disabled' : ''}>
       </div>
       <div>
@@ -1109,16 +1159,16 @@ function renderSettingsView(el) {
   `;
 
   h += `
-    <div style="margin-top:20px;border-top:1px solid var(--line);padding-top:14px">
-      ${isHost ? '<button class="danger" data-a="close-lobby" style="width:100%;margin-bottom:10px">🛑 End Game / Close Lobby</button>' : ''}
-      <button class="alt" data-a="leave" style="width:100%">Leave Lobby</button>
+    <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px">
+      ${isHost ? '<button class="danger" data-a="close-lobby" style="width:100%;margin-bottom:8px">END GAME & CLOSE ROOM</button>' : ''}
+      <button class="alt" data-a="leave" style="width:100%">EXIT ROOM</button>
     </div>
   `;
 
   el.innerHTML = h;
 }
 
-// ---------- Event Delegation for Buttons ----------
+// Action Delegation
 $('#sheet').onclick = async e => {
   const b = e.target.closest('[data-a]');
   if (!b) return;
@@ -1131,7 +1181,7 @@ $('#sheet').onclick = async e => {
     leave();
   }
   else if (a === 'close-lobby') {
-    if (confirm('End game and close this lobby for all players?')) {
+    if (confirm('Conclude game and close room for all players?')) {
       await update(gref(), { status: 'closed', endedAt: serverTimestamp() });
       leave();
     }
@@ -1139,7 +1189,7 @@ $('#sheet').onclick = async e => {
   else if (a === 'setrole') {
     await update(gref('players/' + id), { role: b.dataset.r });
   }
-  else if (a === 'toggle-player-role') {
+  else if (a === 'toggle-role') {
     const cur = P[tid]?.role || 'hider';
     await update(gref('players/' + tid), { role: cur === 'hider' ? 'seeker' : 'hider' });
   }
@@ -1147,11 +1197,11 @@ $('#sheet').onclick = async e => {
     if (!pos) return toast('Waiting for GPS position...');
     update(gref('cfg'), { center: pos });
     map.setView([pos.lat, pos.lng], 17);
-    toast('Zone center set to your location');
+    toast('Zone center set to GPS fix');
   }
   else if (a === 'randomize') {
     const ids = Object.keys(P);
-    if (ids.length < 2) return toast('Need at least 2 players to randomize');
+    if (ids.length < 2) return toast('Requires 2 or more players');
     const shuffled = [...ids].sort(() => Math.random() - .5);
     const seekerCount = Math.max(1, Math.floor(ids.length / 4));
     const u = {};
@@ -1162,29 +1212,29 @@ $('#sheet').onclick = async e => {
     toast(`Assigned ${seekerCount} seeker(s) and ${ids.length - seekerCount} hider(s)`);
   }
   else if (a === 'start-countdown') {
-    if (!g.cfg || !g.cfg.center) return toast('Set the safe zone center first (tap map or use GPS)');
+    if (!g.cfg || !g.cfg.center) return toast('Set safe zone center first (tap map or use GPS)');
     const ids = Object.keys(P);
-    if (ids.length < 2) return toast('Need at least 2 players to start');
+    if (ids.length < 2) return toast('Requires at least 2 players');
     await update(gref(), { status: 'starting', startCountdownAt: serverTimestamp() });
   }
   else if (a === 'caught') {
-    if (confirm('Confirm: You were caught? You will convert to a Seeker.')) {
+    if (confirm('Confirm captured? You will transition to Seeker.')) {
       await update(gref('players/' + id), { role: 'seeker' });
-      toast('You are now a Seeker! Hunt the remaining hiders.');
+      toast('Transferred to Seeker squad.');
     }
   }
   else if (a === 'tag') {
     const targetName = P[tid] ? P[tid].name : 'player';
-    if (confirm(`Mark ${targetName} as caught?`)) {
+    if (confirm(`Confirm tag on ${targetName}?`)) {
       await update(gref('players/' + tid), { role: 'seeker' });
-      toast(`${targetName} marked as caught.`);
+      toast(`${targetName} converted to seeker.`);
     }
   }
   else if (a === 'ping') {
     const t = P[tid], me = P[id];
-    if (!t || t.lat == null) return toast('No GPS signal on that hider yet');
+    if (!t || t.lat == null) return toast('No GPS telemetry on target');
     const cd = (g.cfg.pingCd || 180) * 1000;
-    if (now() - (me.lastPing || 0) < cd) return toast('Ping is on cooldown');
+    if (now() - (me.lastPing || 0) < cd) return toast('Ping on cooldown');
 
     await set(push(gref('pings')), {
       by: id,
@@ -1194,8 +1244,8 @@ $('#sheet').onclick = async e => {
       t: now()
     });
     await update(gref('players/' + id), { lastPing: now() });
-    toast(`Pinged ${t.name}! Location marked for 30s.`);
-    playBeep(800, 'triangle', 0.2);
+    toast(`Ping active on ${t.name} (30s)`);
+    playBeep(820, 'triangle', 0.18);
   }
   else if (a === 'preset') {
     sendChatMessage(b.dataset.text);
@@ -1207,7 +1257,6 @@ $('#sheet').onclick = async e => {
   }
 };
 
-// Chat Form submit
 $('#sheet').onsubmit = e => {
   if (e.target.id === 'chat-form') {
     e.preventDefault();
@@ -1219,13 +1268,12 @@ $('#sheet').onsubmit = e => {
   }
 };
 
-// Settings change by host
 $('#sheet').onchange = e => {
   const k = e.target.dataset.k;
   if (k && g && g.host === id) {
     const v = Math.max(1, +e.target.value || 1);
     update(gref('cfg'), { [k]: v });
-    toast(`Setting ${k} updated`);
+    toast(`Parameter ${k} updated`);
   }
 };
 </script>
