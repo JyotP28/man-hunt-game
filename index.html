@@ -78,7 +78,7 @@ import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase
 import {getDatabase,ref,set,update,onValue,get,push,remove,serverTimestamp,onDisconnect} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 // 1) Paste your Firebase web-app config here (Project settings > Your apps).
-const CFG={apiKey:"YOUR_API_KEY",authDomain:"",databaseURL:"https://YOUR-PROJECT-default-rtdb.firebaseio.com",projectId:"",appId:""};
+const CFG={apiKey:"AIzaSyAyEXD7UlocCaAdv2iI_5S-mTFIVuY8h5M",authDomain:"manhunt-76fb0.firebaseapp.com",databaseURL:"https://manhunt-76fb0-default-rtdb.firebaseio.com",projectId:"manhunt-76fb0",appId:"1:542100450450:web:5f6bdb74f991abdc760a4b"};
 
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -86,7 +86,7 @@ const fmt=s=>{s=Math.max(0,Math.round(s));return Math.floor(s/60)+':'+String(s%6
 const dist=(a,b)=>{const t=Math.PI/180,R=6371000,dl=(b.lat-a.lat)*t,dn=(b.lng-a.lng)*t,x=Math.sin(dl/2)**2+Math.cos(a.lat*t)*Math.cos(b.lat*t)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x))};
 const ls=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){}};
 
-const configured=CFG.apiKey!=="YOUR_API_KEY";
+const configured=!!CFG.apiKey&&CFG.apiKey!=="YOUR_API_KEY";
 let db; if(configured){db=getDatabase(initializeApp(CFG))} else $('#cfgwarn').classList.remove('hide');
 
 const id=ls('mh_id')||(ls('mh_id',Math.random().toString(36).slice(2,10)),ls('mh_id'));
