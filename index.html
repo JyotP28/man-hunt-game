@@ -159,10 +159,9 @@ label{display:block;font-size:11px;font-weight:700;color:var(--text-muted);margi
 .marker-dot{width:16px;height:16px;border-radius:50%;background:var(--hider);border:2px solid #000;position:relative}
 .marker-dot.seeker{background:var(--seeker)}
 .marker-dot.you{box-shadow:0 0 0 5px rgba(243,246,249,.4)}
-.marker-dot.ping{background:transparent;border:2.5px dashed var(--warn);width:36px;height:36px;margin:-10px 0 0 -10px;box-shadow:none;animation:pulsePing 1.8s infinite}
-@keyframes pulsePing{0%{transform:scale(.95);opacity:1}50%{transform:scale(1.2);opacity:.6}100%{transform:scale(.95);opacity:1}}
+.marker-dot.final{background:var(--hider);border:2px solid #fff;box-shadow:0 0 0 4px rgba(16,185,129,.4)}
 .marker-dot span{position:absolute;left:20px;top:-4px;font-size:11px;font-weight:700;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap;pointer-events:none;font-family:var(--font-mono)}
-.marker-dot.ping span{left:38px;top:6px;color:var(--warn)}
+.marker-dot.final span{left:20px;top:-4px;color:var(--hider)}
 
 /* Grid Settings */
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -348,6 +347,8 @@ let P = {};
 let pings = {};
 let chatMsgs = [];
 let hasUnreadChat = false;
+let currentChatRole = null;
+let chatUnsubscribe = null;
 let currentTab = 'targets';
 let off = 0;
 let pos = null;
@@ -358,6 +359,10 @@ let map = null;
 let circle = null;
 let nextCircle = null;
 let finalPreviewCircle = null;
+let finalZoneMarker = null;
+let pingCircles = {};
+let isDraggingFinalMarker = false;
+let editZoneMode = 'start'; // 'start' | 'final'
 let markers = {};
 let seenPings = new Set();
 let firstPing = true;
@@ -419,36 +424,71 @@ function toast(t, ms = 3200) {
   toast.t = setTimeout(() => e.style.display = 'none', ms);
 }
 
-// Fortnite-style Random Zone Centers Generator
-function generatePhaseCenters(initialCenter, r0, r1, numPhases) {
-  const centers = [{ lat: Number(initialCenter.lat.toFixed(6)), lng: Number(initialCenter.lng.toFixed(6)) }];
+// Fortnite-style Random Zone Centers Generator (Interpolates toward designated final center)
+function generateCentersBetween(startCenter, targetFinalCenter, r0, r1, numPhases) {
+  const centers = [{ lat: Number(startCenter.lat.toFixed(6)), lng: Number(startCenter.lng.toFixed(6)) }];
   if (numPhases <= 1) return centers;
 
-  const calcRadius = idx => Math.round(r0 - (idx * (r0 - r1)) / (numPhases - 1));
   const R_EARTH = 6371000;
+  const calcRadius = idx => Math.round(r0 - (idx * (r0 - r1)) / (numPhases - 1));
 
-  for (let i = 1; i < numPhases; i++) {
+  let finalLat = targetFinalCenter.lat;
+  let finalLng = targetFinalCenter.lng;
+  const maxFinalDist = Math.max(10, r0 - r1);
+  const actualDist = dist(startCenter, targetFinalCenter);
+
+  if (actualDist > maxFinalDist) {
+    const ratio = maxFinalDist / actualDist;
+    const dLat = (targetFinalCenter.lat - startCenter.lat) * ratio;
+    const dLng = (targetFinalCenter.lng - startCenter.lng) * ratio;
+    finalLat = startCenter.lat + dLat;
+    finalLng = startCenter.lng + dLng;
+  }
+
+  const finalObj = { lat: Number(finalLat.toFixed(6)), lng: Number(finalLng.toFixed(6)) };
+
+  for (let i = 1; i < numPhases - 1; i++) {
+    const alpha = i / (numPhases - 1);
+    const baseLat = startCenter.lat + alpha * (finalObj.lat - startCenter.lat);
+    const baseLng = startCenter.lng + alpha * (finalObj.lng - startCenter.lng);
+
     const prevRadius = calcRadius(i - 1);
     const currRadius = calcRadius(i);
-    const prevCenter = centers[i - 1];
-
-    // Max distance new center can shift so new circle stays inside previous circle
-    const maxShift = Math.max(0, (prevRadius - currRadius) * 0.75);
-    const shiftDist = Math.sqrt(Math.random()) * maxShift;
+    const maxJitter = Math.max(0, (prevRadius - currRadius) * 0.22);
+    const jitterDist = (Math.random() - 0.5) * 2 * maxJitter;
     const angle = Math.random() * 2 * Math.PI;
 
-    const dy = shiftDist * Math.cos(angle);
-    const dx = shiftDist * Math.sin(angle);
-
+    const dy = jitterDist * Math.cos(angle);
+    const dx = jitterDist * Math.sin(angle);
     const dLat = (dy / R_EARTH) * (180 / Math.PI);
-    const dLng = (dx / (R_EARTH * Math.cos(prevCenter.lat * Math.PI / 180))) * (180 / Math.PI);
+    const dLng = (dx / (R_EARTH * Math.cos(baseLat * Math.PI / 180))) * (180 / Math.PI);
 
     centers.push({
-      lat: Number((prevCenter.lat + dLat).toFixed(6)),
-      lng: Number((prevCenter.lng + dLng).toFixed(6))
+      lat: Number((baseLat + dLat).toFixed(6)),
+      lng: Number((baseLng + dLng).toFixed(6))
     });
   }
+
+  centers.push(finalObj);
   return centers;
+}
+
+function generateRandomPhaseCenters(initialCenter, r0, r1, numPhases) {
+  const maxFinalDist = Math.max(10, (r0 - r1) * 0.75);
+  const shiftDist = Math.sqrt(Math.random()) * maxFinalDist;
+  const angle = Math.random() * 2 * Math.PI;
+  const R_EARTH = 6371000;
+
+  const dy = shiftDist * Math.cos(angle);
+  const dx = shiftDist * Math.sin(angle);
+  const dLat = (dy / R_EARTH) * (180 / Math.PI);
+  const dLng = (dx / (R_EARTH * Math.cos(initialCenter.lat * Math.PI / 180))) * (180 / Math.PI);
+
+  const randomFinal = {
+    lat: initialCenter.lat + dLat,
+    lng: initialCenter.lng + dLng
+  };
+  return generateCentersBetween(initialCenter, randomFinal, r0, r1, numPhases);
 }
 
 // Join / Create
@@ -530,12 +570,15 @@ async function enter(name) {
     P = g.players || {};
     pings = g.pings || {};
 
+    // Dynamic Role-based Chat Subscription Check
+    syncChatSubscription();
+
     // Check incoming pings
     for (const [k, p] of Object.entries(pings)) {
       if (seenPings.has(k)) continue;
       seenPings.add(k);
       if (!firstPing && p.target === id && now() - p.t < 25000) {
-        toast('TARGET IDENTIFIED: Seekers pinged your location');
+        toast('RADAR ALERT: Seekers scanned your 60m sector');
         playBeep(880, 'sawtooth', 0.2, 3);
         navigator.vibrate && navigator.vibrate([350, 150, 350]);
       }
@@ -546,7 +589,6 @@ async function enter(name) {
     tick();
   });
 
-  setupChatListener();
   watchGps();
   setInterval(tick, 1000);
 
@@ -564,11 +606,22 @@ function leave() {
 }
 $('#closed-exit').onclick = leave;
 
-// Team Chat Listener
-function setupChatListener() {
+// Dynamic Team Chat Listener with strict role channel isolation
+function syncChatSubscription() {
   const me = P[id];
-  const role = me ? me.role : 'hider';
-  onValue(gref(`chats/${role}`), s => {
+  if (!me) return;
+  const role = me.role || 'hider';
+  if (role === currentChatRole && chatUnsubscribe) return;
+
+  if (chatUnsubscribe) {
+    chatUnsubscribe();
+    chatUnsubscribe = null;
+  }
+
+  currentChatRole = role;
+  chatMsgs = [];
+
+  chatUnsubscribe = onValue(gref(`chats/${role}`), s => {
     const val = s.val() || {};
     chatMsgs = Object.entries(val).map(([k, v]) => ({ id: k, ...v })).sort((a,b) => a.t - b.t);
 
@@ -586,7 +639,7 @@ function setupChatListener() {
 async function sendChatMessage(text) {
   if (!text || !text.trim()) return;
   const me = P[id] || {};
-  const role = me.role || 'hider';
+  const role = me.role || currentChatRole || 'hider';
   await push(gref(`chats/${role}`), {
     uid: id,
     name: me.name || 'Anonymous',
@@ -611,10 +664,23 @@ function initMap() {
       const numPhases = c.numPhases || 4;
       const r0 = c.r0 || 500;
       const r1 = c.r1 || 60;
-      const newCenter = { lat: e.latlng.lat, lng: e.latlng.lng };
-      const centers = generatePhaseCenters(newCenter, r0, r1, numPhases);
-      update(gref('cfg'), { center: newCenter, phaseCenters: centers });
-      toast('Initial and final safe zones generated. Inspect final zone on map.');
+      const currentCenters = c.phaseCenters || [];
+      const currentFinal = currentCenters[currentCenters.length - 1];
+
+      if (editZoneMode === 'start') {
+        const newStart = { lat: e.latlng.lat, lng: e.latlng.lng };
+        const centers = currentFinal
+          ? generateCentersBetween(newStart, currentFinal, r0, r1, numPhases)
+          : generateRandomPhaseCenters(newStart, r0, r1, numPhases);
+        update(gref('cfg'), { center: newStart, phaseCenters: centers });
+        toast('Initial safe zone placed');
+      } else if (editZoneMode === 'final') {
+        if (!c.center) return toast('Place start zone first');
+        const newFinal = { lat: e.latlng.lat, lng: e.latlng.lng };
+        const centers = generateCentersBetween(c.center, newFinal, r0, r1, numPhases);
+        update(gref('cfg'), { phaseCenters: centers });
+        toast('Final safe zone moved to tapped location');
+      }
     }
   });
 }
@@ -814,7 +880,7 @@ function tick() {
 
   // Draw Zones on Map
   if (g.status === 'lobby') {
-    // In Lobby: Show Phase 1 zone and Final Safe Zone for Host to verify
+    // In Lobby: Show Phase 1 zone and Draggable Final Safe Zone for Host to verify
     const initialCenter = c.center;
     const finalCenter = pi.finalCenter || initialCenter;
     const finalRadius = c.r1 || 60;
@@ -845,20 +911,55 @@ function tick() {
           dashArray: '6, 6',
           fillColor: '#10b981',
           fillOpacity: 0.15
-        }).addTo(map).bindPopup('<b>FINAL SAFE ZONE</b><br>Check area safety.');
-      } else {
+        }).addTo(map);
+      } else if (!isDraggingFinalMarker) {
         finalPreviewCircle.setLatLng(fll);
         finalPreviewCircle.setRadius(finalRadius);
       }
-    } else if (finalPreviewCircle) {
-      finalPreviewCircle.remove();
-      finalPreviewCircle = null;
+
+      // Draggable Final Zone Marker for Creator
+      if (!finalZoneMarker) {
+        finalZoneMarker = L.marker(fll, {
+          draggable: true,
+          icon: L.divIcon({
+            className: '',
+            html: '<div class="marker-dot final"><span>FINAL ZONE (DRAG)</span></div>',
+            iconSize: [16, 16]
+          })
+        }).addTo(map);
+
+        finalZoneMarker.on('dragstart', () => {
+          isDraggingFinalMarker = true;
+        });
+
+        finalZoneMarker.on('drag', e => {
+          const curPos = e.target.getLatLng();
+          if (finalPreviewCircle) finalPreviewCircle.setLatLng(curPos);
+        });
+
+        finalZoneMarker.on('dragend', e => {
+          isDraggingFinalMarker = false;
+          const curPos = e.target.getLatLng();
+          const cfg = g.cfg || {};
+          if (cfg.center) {
+            const centers = generateCentersBetween(cfg.center, curPos, cfg.r0 || 500, cfg.r1 || 60, cfg.numPhases || 4);
+            update(gref('cfg'), { phaseCenters: centers });
+            toast('Final safe zone repositioned');
+          }
+        });
+      } else if (!isDraggingFinalMarker) {
+        finalZoneMarker.setLatLng(fll);
+      }
+    } else {
+      if (finalPreviewCircle) { finalPreviewCircle.remove(); finalPreviewCircle = null; }
+      if (finalZoneMarker) { finalZoneMarker.remove(); finalZoneMarker = null; }
     }
 
     if (nextCircle) { nextCircle.remove(); nextCircle = null; }
 
   } else if (g.status === 'live') {
     if (finalPreviewCircle) { finalPreviewCircle.remove(); finalPreviewCircle = null; }
+    if (finalZoneMarker) { finalZoneMarker.remove(); finalZoneMarker = null; }
 
     if (pi.center) {
       const currentLatLng = [pi.center.lat, pi.center.lng];
@@ -900,6 +1001,7 @@ function tick() {
     if (circle) { circle.remove(); circle = null; }
     if (nextCircle) { nextCircle.remove(); nextCircle = null; }
     if (finalPreviewCircle) { finalPreviewCircle.remove(); finalPreviewCircle = null; }
+    if (finalZoneMarker) { finalZoneMarker.remove(); finalZoneMarker = null; }
   }
 
   // Update Ticker Columns
@@ -977,7 +1079,7 @@ function tick() {
     $('#headstart-overlay').classList.add('hide');
   }
 
-  // Map Markers
+  // Map Markers (Players)
   const want = {};
   for (const [pid, p] of Object.entries(P)) {
     const lat = pid === id && pos ? pos.lat : p.lat;
@@ -997,27 +1099,46 @@ function tick() {
     };
   }
 
-  // Ping Markers
+  // Ping Sector Circles (Decently sized 60-meter search circles on map)
+  const activePingKeys = new Set();
   if (g.status === 'live' && seeker) {
     for (const [k, p] of Object.entries(pings)) {
       if (n - p.t > 30000) continue;
-      const targetP = P[p.target];
-      const targetName = targetP ? targetP.name : 'Target';
-      const ageSecs = Math.round((n - p.t)/1000);
-      const pingPopup = `
-        <div style="font-weight:700">PING: ${esc(targetName)}</div>
-        <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted);margin:2px 0 6px">${ageSecs}s ago</div>
-        ${getNavLinks(p.lat, p.lng, `Ping: ${targetName}`)}
-      `;
-      want['ping_' + k] = {
-        ll: [p.lat, p.lng],
-        html: `<div class="marker-dot ping"><span>${esc(targetName)} (${ageSecs}s)</span></div>`,
-        popup: pingPopup
-      };
+      activePingKeys.add(k);
+      const ageSecs = Math.round((n - p.t) / 1000);
+      const pRadius = p.radius || 60;
+
+      if (!pingCircles[k]) {
+        pingCircles[k] = L.circle([p.lat, p.lng], {
+          radius: pRadius,
+          color: '#f59e0b',
+          weight: 2,
+          dashArray: '6, 6',
+          fillColor: '#f59e0b',
+          fillOpacity: 0.16
+        }).addTo(map);
+
+        pingCircles[k].bindPopup(`
+          <div style="font-weight:700">SEARCH SECTOR (${pRadius}M)</div>
+          <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted);margin:2px 0 6px">Random hider scanned in this area (${ageSecs}s ago)</div>
+          ${getNavLinks(p.lat, p.lng, 'Search Sector')}
+        `);
+      } else {
+        pingCircles[k].setLatLng([p.lat, p.lng]);
+        pingCircles[k].setRadius(pRadius);
+      }
     }
   }
 
-  // Remove old markers
+  // Clean expired ping circles
+  for (const k of Object.keys(pingCircles)) {
+    if (!activePingKeys.has(k) || !seeker || g.status !== 'live') {
+      pingCircles[k].remove();
+      delete pingCircles[k];
+    }
+  }
+
+  // Remove old player markers
   for (const k of Object.keys(markers)) {
     if (!want[k]) {
       markers[k].remove();
@@ -1025,7 +1146,7 @@ function tick() {
     }
   }
 
-  // Update/Add markers
+  // Update/Add player markers
   for (const [k, item] of Object.entries(want)) {
     if (!markers[k]) {
       markers[k] = L.marker(item.ll, {
@@ -1042,11 +1163,11 @@ function tick() {
     }
   }
 
-  // Ping buttons cooldown
+  // Ping buttons cooldown in UI
   const remPing = (c.pingCd || 180) - (n - (me.lastPing || 0)) / 1000;
   document.querySelectorAll('.pbtn').forEach(b => {
     b.disabled = remPing > 0 || pi.isHeadstart;
-    b.textContent = pi.isHeadstart ? 'HOLD' : (remPing > 0 ? fmt(remPing) : 'PING');
+    b.textContent = pi.isHeadstart ? 'HOLD (HEADSTART)' : (remPing > 0 ? `COOLDOWN ${fmt(remPing)}` : 'SCAN RANDOM HIDER');
   });
 }
 
@@ -1079,6 +1200,7 @@ function renderTargetsView(el) {
   const list = Object.entries(P);
   const hiders = list.filter(([,p]) => p.role === 'hider');
   const n = now();
+  const c = g?.cfg || {};
   let h = '';
 
   if (g.status === 'lobby') {
@@ -1098,15 +1220,26 @@ function renderTargetsView(el) {
       h += `
         <div class="card">
           <div class="card-header">
-            <span style="font-weight:700;font-size:12px;text-transform:uppercase;color:var(--warn)">Host Controls</span>
-            <span class="pill host">HOST</span>
+            <span style="font-weight:700;font-size:12px;text-transform:uppercase;color:var(--warn)">Host Safe Zone Positioning</span>
+            <span class="pill host">CREATOR</span>
           </div>
-          <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">Set safe zone on map. Verify the dashed final zone is safe.</p>
+          
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin:4px 0">Map Tap Targeting Mode</div>
+          <div class="row" style="margin-top:2px;margin-bottom:8px">
+            <button class="sm ${editZoneMode==='start'?'hd':'alt'}" data-a="mode-start">TAP: SET START</button>
+            <button class="sm ${editZoneMode==='final'?'hd':'alt'}" data-a="mode-final">TAP: SET FINAL ZONE</button>
+          </div>
+          
+          <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:10px;line-height:1.35">
+            <b>Reposition Final Zone:</b> Drag the green <i>FINAL ZONE</i> marker on the map, or switch to <i>TAP: SET FINAL ZONE</i> to position where the game will conclude.
+          </div>
+
           <div class="row">
-            <button class="alt sm" data-a="mycenter">SET TO GPS</button>
-            <button class="alt sm" data-a="reroll-final">RE-ROLL FINAL ZONE</button>
+            <button class="alt sm" data-a="mycenter">SET START TO GPS</button>
+            <button class="alt sm" data-a="reroll-final">RANDOMIZE PATH</button>
           </div>
-          <div class="row" style="margin-top:6px">
+
+          <div class="row" style="margin-top:8px">
             <button class="alt sm" data-a="randomize">RANDOMIZE TEAMS</button>
             <button class="hd sm" data-a="start-countdown">START GAME</button>
           </div>
@@ -1115,39 +1248,37 @@ function renderTargetsView(el) {
     }
   } else if (g.status === 'live') {
     if (me.role === 'seeker') {
+      const pi = getPhaseInfo(n);
+      const remPing = (c.pingCd || 180) - (n - (me.lastPing || 0)) / 1000;
+
       h += `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <span style="font-weight:700;font-size:12px;text-transform:uppercase">${hiders.length} ACTIVE HIDERS</span>
-          <span style="font-size:11px;color:var(--text-dim);font-family:var(--font-mono)">DISTANCE ON PING ONLY</span>
+        <div class="card" style="border-color:rgba(239,68,68,0.4);margin-bottom:12px">
+          <div class="card-header">
+            <span style="font-weight:700;font-size:12px;text-transform:uppercase;color:var(--seeker)">Tactical Radar Scan</span>
+            <span class="pill seeker">${pi.isHeadstart ? 'HOLD' : (remPing > 0 ? fmt(remPing) : 'READY')}</span>
+          </div>
+          <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">
+            Pings a random surviving hider to prevent targeting. Reveals a 60m search sector on map for 30 seconds.
+          </p>
+          <button class="pbtn sk" data-a="ping-random" style="width:100%" ${remPing > 0 || pi.isHeadstart ? 'disabled' : ''}>
+            ${pi.isHeadstart ? 'HOLD (HEADSTART)' : (remPing > 0 ? `COOLDOWN ${fmt(remPing)}` : 'SCAN RANDOM HIDER')}
+          </button>
+        </div>
+
+        <div style="font-weight:700;font-size:12px;text-transform:uppercase;margin-bottom:8px">
+          Active Hiders Remaining (${hiders.length})
         </div>
       `;
 
-      h += hiders.map(([pid, p]) => {
-        // Only show distance in meters if an active ping exists (< 30s)
-        let activePing = null;
-        for (const [k, ping] of Object.entries(pings)) {
-          if (ping.target === pid && (n - ping.t) < 30000) {
-            if (!activePing || ping.t > activePing.t) activePing = ping;
-          }
-        }
-
-        const subText = activePing && pos
-          ? `PINGED: ${Math.round(dist(pos, activePing))}m away (${Math.round((n - activePing.t)/1000)}s ago)`
-          : `STATUS: SURVIVING`;
-
-        // Seekers DO NOT have the ability to tag hiders. Only ping.
-        return `
-          <div class="hrow">
-            <div class="hrow-main">
-              <div class="hrow-name">${esc(p.name)}</div>
-              <div class="hrow-sub">${subText}</div>
-            </div>
-            <div class="hrow-actions">
-              <button class="pbtn sk sm" data-a="ping" data-id="${pid}">PING</button>
-            </div>
+      h += hiders.map(([pid, p]) => `
+        <div class="hrow">
+          <div class="hrow-main">
+            <div class="hrow-name">${esc(p.name)}</div>
+            <div class="hrow-sub">STATUS: SURVIVING</div>
           </div>
-        `;
-      }).join('');
+          <span class="pill hider">HIDDEN</span>
+        </div>
+      `).join('');
 
     } else {
       // Hider View: Has the tag self button ("I WAS CAUGHT")
@@ -1186,7 +1317,7 @@ function renderTargetsView(el) {
 function renderChatView(el) {
   if (!el) el = $('#tab-content');
   const me = P[id] || {};
-  const role = me.role || 'hider';
+  const role = me.role || currentChatRole || 'hider';
   const roleLabel = role === 'seeker' ? 'SEEKER CHANNEL' : 'HIDER CHANNEL';
 
   const presets = role === 'seeker'
@@ -1204,7 +1335,7 @@ function renderChatView(el) {
     </div>
 
     <div id="chat-msgs">
-      ${chatMsgs.length === 0 ? '<div style="color:var(--text-dim);text-align:center;padding:24px;font-size:12.5px">No transmissions yet.</div>' : ''}
+      ${chatMsgs.length === 0 ? '<div style="color:var(--text-dim);text-align:center;padding:24px;font-size:12.5px">No transmissions on this team channel.</div>' : ''}
       ${chatMsgs.map(m => `
         <div class="msg ${m.uid === id ? 'me' : ''}">
           <div class="meta">
@@ -1217,7 +1348,7 @@ function renderChatView(el) {
     </div>
 
     <form class="chat-input-bar" id="chat-form">
-      <input id="chat-input" placeholder="Transmit message..." autocomplete="off" maxlength="120">
+      <input id="chat-input" placeholder="Transmit to team..." autocomplete="off" maxlength="120">
       <button type="submit" class="sm ${role === 'seeker' ? 'sk' : 'hd'}">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       </button>
@@ -1342,20 +1473,33 @@ $('#sheet').onclick = async e => {
     const cur = P[tid]?.role || 'hider';
     await update(gref('players/' + tid), { role: cur === 'hider' ? 'seeker' : 'hider' });
   }
+  else if (a === 'mode-start') {
+    editZoneMode = 'start';
+    renderPanel();
+    toast('Mode: Tap on map to set start center');
+  }
+  else if (a === 'mode-final') {
+    editZoneMode = 'final';
+    renderPanel();
+    toast('Mode: Tap on map (or drag marker) to set final safe zone');
+  }
   else if (a === 'mycenter') {
     if (!pos) return toast('Waiting for GPS position...');
     const c = g.cfg || {};
-    const centers = generatePhaseCenters(pos, c.r0 || 500, c.r1 || 60, c.numPhases || 4);
+    const currentFinal = (c.phaseCenters && c.phaseCenters.length) ? c.phaseCenters[c.phaseCenters.length - 1] : null;
+    const centers = currentFinal
+      ? generateCentersBetween(pos, currentFinal, c.r0 || 500, c.r1 || 60, c.numPhases || 4)
+      : generateRandomPhaseCenters(pos, c.r0 || 500, c.r1 || 60, c.numPhases || 4);
     update(gref('cfg'), { center: pos, phaseCenters: centers });
     map.setView([pos.lat, pos.lng], 17);
-    toast('Safe zones centered at GPS. Verify dashed final zone.');
+    toast('Start center set to GPS fix');
   }
   else if (a === 'reroll-final') {
     const c = g.cfg || {};
     if (!c.center) return toast('Set initial safe zone center first');
-    const centers = generatePhaseCenters(c.center, c.r0 || 500, c.r1 || 60, c.numPhases || 4);
+    const centers = generateRandomPhaseCenters(c.center, c.r0 || 500, c.r1 || 60, c.numPhases || 4);
     update(gref('cfg'), { phaseCenters: centers });
-    toast('New random safe zone path generated.');
+    toast('New random safe zone path generated');
   }
   else if (a === 'randomize') {
     const ids = Object.keys(P);
@@ -1381,22 +1525,35 @@ $('#sheet').onclick = async e => {
       toast('Transferred to Seeker squad.');
     }
   }
-  else if (a === 'ping') {
-    const t = P[tid], me = P[id];
-    if (!t || t.lat == null) return toast('No GPS telemetry on target');
+  else if (a === 'ping-random') {
+    const me = P[id];
     const cd = (g.cfg.pingCd || 180) * 1000;
-    if (now() - (me.lastPing || 0) < cd) return toast('Ping on cooldown');
+    if (now() - (me.lastPing || 0) < cd) return toast('Radar scan on cooldown');
+
+    const activeHiders = Object.entries(P).filter(([pid, p]) => p.role === 'hider' && p.lat != null);
+    if (activeHiders.length === 0) return toast('No GPS telemetry on surviving hiders yet');
+
+    // Pick a random hider to prevent individual targeting
+    const [chosenId, chosenHider] = activeHiders[Math.floor(Math.random() * activeHiders.length)];
+
+    // Add 10-15m random offset so center isn't an exact coordinate pin
+    const fuzzDist = Math.random() * 15;
+    const fuzzAngle = Math.random() * 2 * Math.PI;
+    const R_EARTH = 6371000;
+    const fLat = chosenHider.lat + (fuzzDist * Math.cos(fuzzAngle) / R_EARTH) * (180 / Math.PI);
+    const fLng = chosenHider.lng + (fuzzDist * Math.sin(fuzzAngle) / (R_EARTH * Math.cos(chosenHider.lat * Math.PI / 180))) * (180 / Math.PI);
 
     await set(push(gref('pings')), {
       by: id,
-      target: tid,
-      lat: t.lat,
-      lng: t.lng,
+      target: chosenId,
+      lat: Number(fLat.toFixed(6)),
+      lng: Number(fLng.toFixed(6)),
+      radius: 20, // 20 meter search sector
       t: now()
     });
     await update(gref('players/' + id), { lastPing: now() });
-    toast(`Ping active on ${t.name} (30s)`);
-    playBeep(820, 'triangle', 0.18);
+    toast('Radar scan deployed: 60m search area marked for 30s');
+    playBeep(820, 'triangle', 0.2);
   }
   else if (a === 'preset') {
     sendChatMessage(b.dataset.text);
@@ -1426,7 +1583,11 @@ $('#sheet').onchange = e => {
     const c = g.cfg || {};
     const updated = { ...c, [k]: v };
     if (c.center && (k === 'r0' || k === 'r1' || k === 'numPhases')) {
-      updated.phaseCenters = generatePhaseCenters(c.center, updated.r0, updated.r1, updated.numPhases);
+      const currentCenters = c.phaseCenters || [];
+      const currentFinal = currentCenters[currentCenters.length - 1];
+      updated.phaseCenters = currentFinal
+        ? generateCentersBetween(c.center, currentFinal, updated.r0, updated.r1, updated.numPhases)
+        : generateRandomPhaseCenters(c.center, updated.r0, updated.r1, updated.numPhases);
     }
     update(gref('cfg'), updated);
     toast(`Parameter ${k} updated`);
