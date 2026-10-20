@@ -4,6 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>MANHUNT</title>
+
+<!-- PWA & Mobile Web App Meta -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Manhunt">
+<meta name="theme-color" content="#090d10">
+
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root{
@@ -64,7 +73,7 @@ label{display:block;font-size:11px;font-weight:700;color:var(--text-muted);margi
 /* Home Screen */
 #home{position:fixed;inset:0;z-index:100;background:var(--bg);padding:var(--safe-top) 20px var(--safe-bot);overflow-y:auto;display:flex;flex-direction:column}
 .home-inner{margin:auto 0;max-width:440px;width:100%;align-self:center}
-.home-brand{margin-bottom:28px}
+.home-brand{margin-bottom:24px}
 .home-brand h1{font-size:38px;letter-spacing:-0.04em;font-weight:900;line-height:1}
 .home-brand p{color:var(--text-muted);margin:8px 0 0;font-size:14px;line-height:1.4}
 .row{display:flex;gap:8px;margin-top:8px}
@@ -81,7 +90,7 @@ label{display:block;font-size:11px;font-weight:700;color:var(--text-muted);margi
 .hud-code{font-family:var(--font-mono);font-size:13px;font-weight:800;letter-spacing:.05em;color:var(--text);white-space:nowrap}
 .hud-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
 
-/* Stat Strip (Horizontal Ticker) */
+/* Ticker Strip: 4 Fixed Columns with Monospace Tabular Figures */
 .hud-ticker{display:grid;grid-template-columns:repeat(4,1fr);background:rgba(16,22,27,.9);border:1px solid var(--line);border-radius:6px;padding:5px 6px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 4px 12px rgba(0,0,0,.4)}
 .ticker-col{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 2px;min-width:0}
 .ticker-col:not(:last-child){border-right:1px solid var(--line)}
@@ -166,7 +175,7 @@ label{display:block;font-size:11px;font-weight:700;color:var(--text-muted);margi
 
 <div id="map"></div>
 
-<!-- Top HUD (Zero Overlapping, Strictly Controlled Widths) -->
+<!-- Top HUD (No Overlapping, Controlled Widths) -->
 <header id="hud-header" class="hide">
   <div class="hud-inner">
     
@@ -225,7 +234,7 @@ label{display:block;font-size:11px;font-weight:700;color:var(--text-muted);margi
   <div class="home-inner">
     <div class="home-brand">
       <h1>MANHUNT</h1>
-      <p>Tactical real-time GPS tag. Stepped shrinking safe zones, throttled telemetry, and role-based tactical communication.</p>
+      <p>Tactical real-time GPS tag. Random stepped shrinking storm zones, throttled telemetry, and role-based tactical communication.</p>
     </div>
 
     <label for="name">Operator Codename</label>
@@ -239,6 +248,14 @@ label{display:block;font-size:11px;font-weight:700;color:var(--text-muted);margi
     <div class="row">
       <input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="ABCD">
       <button id="join" class="alt">Join</button>
+    </div>
+
+    <div class="card" style="margin-top:20px">
+      <div style="font-weight:700;font-size:12px;text-transform:uppercase;margin-bottom:4px">Full Screen App Installation</div>
+      <p style="font-size:12px;color:var(--text-muted);margin:0">
+        <b>iOS Safari:</b> Tap Share button then <i>Add to Home Screen</i>.<br>
+        <b>Android Chrome:</b> Tap menu (three dots) then <i>Install App</i>.
+      </p>
     </div>
 
     <div id="cfgwarn" class="hide">
@@ -340,6 +357,7 @@ let lastWarnSound = 0;
 let map = null;
 let circle = null;
 let nextCircle = null;
+let finalPreviewCircle = null;
 let markers = {};
 let seenPings = new Set();
 let firstPing = true;
@@ -350,7 +368,7 @@ let audioCtx = null;
 const now = () => Date.now() + off;
 const gref = p => ref(db, `games/${code}${p ? '/' + p : ''}`);
 
-// Navigation links helper (Google Maps & Apple Maps)
+// Navigation links helper
 function getNavLinks(lat, lng, label = 'Location') {
   if (lat == null || lng == null) return '';
   const enc = encodeURIComponent(label);
@@ -399,6 +417,38 @@ function toast(t, ms = 3200) {
   e.style.display = 'block';
   clearTimeout(toast.t);
   toast.t = setTimeout(() => e.style.display = 'none', ms);
+}
+
+// Fortnite-style Random Zone Centers Generator
+function generatePhaseCenters(initialCenter, r0, r1, numPhases) {
+  const centers = [{ lat: Number(initialCenter.lat.toFixed(6)), lng: Number(initialCenter.lng.toFixed(6)) }];
+  if (numPhases <= 1) return centers;
+
+  const calcRadius = idx => Math.round(r0 - (idx * (r0 - r1)) / (numPhases - 1));
+  const R_EARTH = 6371000;
+
+  for (let i = 1; i < numPhases; i++) {
+    const prevRadius = calcRadius(i - 1);
+    const currRadius = calcRadius(i);
+    const prevCenter = centers[i - 1];
+
+    // Max distance new center can shift so new circle stays inside previous circle
+    const maxShift = Math.max(0, (prevRadius - currRadius) * 0.75);
+    const shiftDist = Math.sqrt(Math.random()) * maxShift;
+    const angle = Math.random() * 2 * Math.PI;
+
+    const dy = shiftDist * Math.cos(angle);
+    const dx = shiftDist * Math.sin(angle);
+
+    const dLat = (dy / R_EARTH) * (180 / Math.PI);
+    const dLng = (dx / (R_EARTH * Math.cos(prevCenter.lat * Math.PI / 180))) * (180 / Math.PI);
+
+    centers.push({
+      lat: Number((prevCenter.lat + dLat).toFixed(6)),
+      lng: Number((prevCenter.lng + dLng).toFixed(6))
+    });
+  }
+  return centers;
 }
 
 // Join / Create
@@ -557,8 +607,14 @@ function initMap() {
 
   map.on('click', e => {
     if (g && g.status === 'lobby' && g.host === id) {
-      update(gref('cfg'), { center: { lat: e.latlng.lat, lng: e.latlng.lng } });
-      toast('Safe zone center updated');
+      const c = g.cfg || {};
+      const numPhases = c.numPhases || 4;
+      const r0 = c.r0 || 500;
+      const r1 = c.r1 || 60;
+      const newCenter = { lat: e.latlng.lat, lng: e.latlng.lng };
+      const centers = generatePhaseCenters(newCenter, r0, r1, numPhases);
+      update(gref('cfg'), { center: newCenter, phaseCenters: centers });
+      toast('Initial and final safe zones generated. Inspect final zone on map.');
     }
   });
 }
@@ -601,7 +657,7 @@ $('#center-btn').onclick = () => pos && map.setView([pos.lat, pos.lng], 17);
 $('#sheet-toggle').onclick = () => $('#sheet').classList.toggle('hide');
 $('#sheet-handle').onclick = () => $('#sheet').classList.toggle('hide');
 
-// Stepped Shrinking Calculation
+// Stepped Shrinking Calculation with Fortnite Random Phase Centers
 function getPhaseInfo(n) {
   const c = g?.cfg || {};
   const numPhases = Math.max(1, c.numPhases || 4);
@@ -609,13 +665,19 @@ function getPhaseInfo(n) {
   const headstart = Math.max(0, c.headstart || 0);
   const r0 = c.r0 || 500;
   const r1 = c.r1 || 60;
+  const phaseCenters = c.phaseCenters || (c.center ? [c.center] : []);
 
   if (!g || g.status !== 'live' || !g.startedAt) {
+    const initialCenter = phaseCenters[0] || c.center;
+    const finalCenter = phaseCenters[phaseCenters.length - 1] || initialCenter;
     return {
       phase: 1,
       numPhases,
       radius: r0,
       nextRadius: r0,
+      center: initialCenter,
+      nextCenter: initialCenter,
+      finalCenter,
       timeLeftInPhase: phaseSecs,
       isHeadstart: false,
       headstartLeft: 0,
@@ -629,11 +691,17 @@ function getPhaseInfo(n) {
   if (elapsedTotal < headstart) {
     const headstartLeft = headstart - elapsedTotal;
     const nextRadius = numPhases > 1 ? Math.round(r0 - (1 * (r0 - r1)) / (numPhases - 1)) : r1;
+    const initialCenter = phaseCenters[0] || c.center;
+    const nextCenter = phaseCenters[1] || initialCenter;
+    const finalCenter = phaseCenters[phaseCenters.length - 1] || initialCenter;
     return {
       phase: 1,
       numPhases,
       radius: r0,
       nextRadius,
+      center: initialCenter,
+      nextCenter,
+      finalCenter,
       timeLeftInPhase: phaseSecs,
       isHeadstart: true,
       headstartLeft,
@@ -655,6 +723,10 @@ function getPhaseInfo(n) {
   const isFinalPhase = currentPhaseIndex >= numPhases - 1;
   const nextRadius = isFinalPhase ? currentRadius : calcRadius(currentPhaseIndex + 1);
 
+  const currentCenter = phaseCenters[currentPhaseIndex] || c.center;
+  const nextCenter = isFinalPhase ? currentCenter : (phaseCenters[currentPhaseIndex + 1] || currentCenter);
+  const finalCenter = phaseCenters[phaseCenters.length - 1] || currentCenter;
+
   const timeSpentInPhase = gameElapsed - (currentPhaseIndex * phaseSecs);
   const timeLeftInPhase = isFinalPhase ? 0 : Math.max(0, phaseSecs - timeSpentInPhase);
   const warn5m = !isFinalPhase && timeLeftInPhase <= 300;
@@ -664,6 +736,9 @@ function getPhaseInfo(n) {
     numPhases,
     radius: currentRadius,
     nextRadius,
+    center: currentCenter,
+    nextCenter,
+    finalCenter,
     timeLeftInPhase,
     isHeadstart: false,
     headstartLeft: 0,
@@ -730,7 +805,7 @@ function tick() {
   // Stepped Phase Shift Toast
   if (g.status === 'live' && !pi.isHeadstart && pi.phase !== activePhaseIdx) {
     if (activePhaseIdx !== -1) {
-      toast(`ZONE SHRUNK: Safe zone radius reduced to ${pi.radius}m`);
+      toast(`ZONE SHIFTED: Safe zone moved and reduced to ${pi.radius}m`);
       playBeep(880, 'triangle', 0.25, 2);
       navigator.vibrate && navigator.vibrate([250, 100, 250]);
     }
@@ -738,44 +813,96 @@ function tick() {
   }
 
   // Draw Zones on Map
-  if (c.center) {
-    const centerLatLng = [c.center.lat, c.center.lng];
-    if (!circle) {
-      circle = L.circle(centerLatLng, {
-        radius: pi.radius,
-        color: '#ef4444',
-        weight: 2,
-        fillColor: '#ef4444',
-        fillOpacity: 0.06
-      }).addTo(map);
-    } else {
-      circle.setLatLng(centerLatLng);
-      circle.setRadius(pi.radius);
-    }
+  if (g.status === 'lobby') {
+    // In Lobby: Show Phase 1 zone and Final Safe Zone for Host to verify
+    const initialCenter = c.center;
+    const finalCenter = pi.finalCenter || initialCenter;
+    const finalRadius = c.r1 || 60;
 
-    if (!pi.isFinalPhase && pi.nextRadius < pi.radius) {
-      if (!nextCircle) {
-        nextCircle = L.circle(centerLatLng, {
-          radius: pi.nextRadius,
-          color: '#f59e0b',
-          weight: 1.5,
-          dashArray: '5, 6',
-          fillOpacity: 0
+    if (initialCenter) {
+      const ll = [initialCenter.lat, initialCenter.lng];
+      if (!circle) {
+        circle = L.circle(ll, {
+          radius: c.r0 || 500,
+          color: '#ef4444',
+          weight: 2,
+          fillColor: '#ef4444',
+          fillOpacity: 0.05
         }).addTo(map);
       } else {
-        nextCircle.setLatLng(centerLatLng);
-        nextCircle.setRadius(pi.nextRadius);
+        circle.setLatLng(ll);
+        circle.setRadius(c.r0 || 500);
       }
-    } else if (nextCircle) {
-      nextCircle.remove();
-      nextCircle = null;
+    }
+
+    if (finalCenter && g.host === id) {
+      const fll = [finalCenter.lat, finalCenter.lng];
+      if (!finalPreviewCircle) {
+        finalPreviewCircle = L.circle(fll, {
+          radius: finalRadius,
+          color: '#10b981',
+          weight: 2,
+          dashArray: '6, 6',
+          fillColor: '#10b981',
+          fillOpacity: 0.15
+        }).addTo(map).bindPopup('<b>FINAL SAFE ZONE</b><br>Check area safety.');
+      } else {
+        finalPreviewCircle.setLatLng(fll);
+        finalPreviewCircle.setRadius(finalRadius);
+      }
+    } else if (finalPreviewCircle) {
+      finalPreviewCircle.remove();
+      finalPreviewCircle = null;
+    }
+
+    if (nextCircle) { nextCircle.remove(); nextCircle = null; }
+
+  } else if (g.status === 'live') {
+    if (finalPreviewCircle) { finalPreviewCircle.remove(); finalPreviewCircle = null; }
+
+    if (pi.center) {
+      const currentLatLng = [pi.center.lat, pi.center.lng];
+      if (!circle) {
+        circle = L.circle(currentLatLng, {
+          radius: pi.radius,
+          color: '#ef4444',
+          weight: 2,
+          fillColor: '#ef4444',
+          fillOpacity: 0.06
+        }).addTo(map);
+      } else {
+        circle.setLatLng(currentLatLng);
+        circle.setRadius(pi.radius);
+      }
+
+      // Next phase random zone preview (amber dashed circle in new spot)
+      if (!pi.isFinalPhase && pi.nextCenter && pi.nextRadius < pi.radius) {
+        const nextLatLng = [pi.nextCenter.lat, pi.nextCenter.lng];
+        if (!nextCircle) {
+          nextCircle = L.circle(nextLatLng, {
+            radius: pi.nextRadius,
+            color: '#f59e0b',
+            weight: 1.5,
+            dashArray: '5, 6',
+            fillOpacity: 0.04,
+            fillColor: '#f59e0b'
+          }).addTo(map);
+        } else {
+          nextCircle.setLatLng(nextLatLng);
+          nextCircle.setRadius(pi.nextRadius);
+        }
+      } else if (nextCircle) {
+        nextCircle.remove();
+        nextCircle = null;
+      }
     }
   } else {
     if (circle) { circle.remove(); circle = null; }
     if (nextCircle) { nextCircle.remove(); nextCircle = null; }
+    if (finalPreviewCircle) { finalPreviewCircle.remove(); finalPreviewCircle = null; }
   }
 
-  // Update Ticker Columns (No text wrapping!)
+  // Update Ticker Columns
   if (g.status === 'live') {
     $('#tk-phase').textContent = `${pi.phase}/${pi.numPhases}`;
     $('#tk-radius').textContent = `${pi.radius}M`;
@@ -809,7 +936,7 @@ function tick() {
     } else {
       $('#headstart-overlay').classList.add('hide');
 
-      const isOutside = c.center && pos && dist(pos, c.center) > pi.radius;
+      const isOutside = pi.center && pos && dist(pos, pi.center) > pi.radius;
       if (isOutside) {
         alertStrip.className = 'hud-alert danger';
         alertText.textContent = 'OUTSIDE SAFE ZONE';
@@ -823,7 +950,7 @@ function tick() {
         }
       } else if (pi.warn5m) {
         alertStrip.className = 'hud-alert warn';
-        alertText.textContent = `SHRINKING TO ${pi.nextRadius}M`;
+        alertText.textContent = `ZONE SHIFTS TO ${pi.nextRadius}M`;
         alertTimer.textContent = fmt(pi.timeLeftInPhase);
         alertStrip.classList.remove('hide');
 
@@ -951,6 +1078,7 @@ function renderTargetsView(el) {
   const me = P[id] || {};
   const list = Object.entries(P);
   const hiders = list.filter(([,p]) => p.role === 'hider');
+  const n = now();
   let h = '';
 
   if (g.status === 'lobby') {
@@ -973,12 +1101,15 @@ function renderTargetsView(el) {
             <span style="font-weight:700;font-size:12px;text-transform:uppercase;color:var(--warn)">Host Controls</span>
             <span class="pill host">HOST</span>
           </div>
-          <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">Set safe zone center on map, then start when players join.</p>
+          <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">Set safe zone on map. Verify the dashed final zone is safe.</p>
           <div class="row">
             <button class="alt sm" data-a="mycenter">SET TO GPS</button>
-            <button class="alt sm" data-a="randomize">RANDOMIZE</button>
+            <button class="alt sm" data-a="reroll-final">RE-ROLL FINAL ZONE</button>
           </div>
-          <button class="hd" data-a="start-countdown" style="width:100%;margin-top:8px">START GAME</button>
+          <div class="row" style="margin-top:6px">
+            <button class="alt sm" data-a="randomize">RANDOMIZE TEAMS</button>
+            <button class="hd sm" data-a="start-countdown">START GAME</button>
+          </div>
         </div>
       `;
     }
@@ -987,36 +1118,54 @@ function renderTargetsView(el) {
       h += `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <span style="font-weight:700;font-size:12px;text-transform:uppercase">${hiders.length} ACTIVE HIDERS</span>
-          <span style="font-size:11px;color:var(--text-dim);font-family:var(--font-mono)">30s PING DURATION</span>
+          <span style="font-size:11px;color:var(--text-dim);font-family:var(--font-mono)">DISTANCE ON PING ONLY</span>
         </div>
       `;
-      h += hiders.map(([pid, p]) => `
-        <div class="hrow">
-          <div class="hrow-main">
-            <div class="hrow-name">${esc(p.name)}</div>
-            <div class="hrow-sub">${p.lat != null && pos ? `${Math.round(dist(pos, p))}m away` : 'Active'}</div>
+
+      h += hiders.map(([pid, p]) => {
+        // Only show distance in meters if an active ping exists (< 30s)
+        let activePing = null;
+        for (const [k, ping] of Object.entries(pings)) {
+          if (ping.target === pid && (n - ping.t) < 30000) {
+            if (!activePing || ping.t > activePing.t) activePing = ping;
+          }
+        }
+
+        const subText = activePing && pos
+          ? `PINGED: ${Math.round(dist(pos, activePing))}m away (${Math.round((n - activePing.t)/1000)}s ago)`
+          : `STATUS: SURVIVING`;
+
+        // Seekers DO NOT have the ability to tag hiders. Only ping.
+        return `
+          <div class="hrow">
+            <div class="hrow-main">
+              <div class="hrow-name">${esc(p.name)}</div>
+              <div class="hrow-sub">${subText}</div>
+            </div>
+            <div class="hrow-actions">
+              <button class="pbtn sk sm" data-a="ping" data-id="${pid}">PING</button>
+            </div>
           </div>
-          <div class="hrow-actions">
-            <button class="pbtn sk sm" data-a="ping" data-id="${pid}">PING</button>
-            <button class="alt sm" data-a="tag" data-id="${pid}">TAG</button>
-          </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
+
     } else {
+      // Hider View: Has the tag self button ("I WAS CAUGHT")
       h += `
         <div class="card">
           <h3 style="margin-bottom:4px">${hiders.length} HIDERS SURVIVING</h3>
-          <p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px">Remain inside safe zone. Opponents hidden except during scheduled reveal periods.</p>
+          <p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px">Remain inside the moving safe zones. Convert to seeker if tagged.</p>
           <button class="danger" data-a="caught" style="width:100%">I WAS CAUGHT</button>
         </div>
       `;
     }
 
-    if (g.cfg && g.cfg.center) {
+    const pi = getPhaseInfo(n);
+    if (pi.center) {
       h += `
         <div class="card" style="margin-top:10px">
-          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Zone Center Navigation</div>
-          ${getNavLinks(g.cfg.center.lat, g.cfg.center.lng, 'Zone Center')}
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Current Safe Zone Navigation</div>
+          ${getNavLinks(pi.center.lat, pi.center.lng, 'Safe Zone')}
         </div>
       `;
     }
@@ -1195,9 +1344,18 @@ $('#sheet').onclick = async e => {
   }
   else if (a === 'mycenter') {
     if (!pos) return toast('Waiting for GPS position...');
-    update(gref('cfg'), { center: pos });
+    const c = g.cfg || {};
+    const centers = generatePhaseCenters(pos, c.r0 || 500, c.r1 || 60, c.numPhases || 4);
+    update(gref('cfg'), { center: pos, phaseCenters: centers });
     map.setView([pos.lat, pos.lng], 17);
-    toast('Zone center set to GPS fix');
+    toast('Safe zones centered at GPS. Verify dashed final zone.');
+  }
+  else if (a === 'reroll-final') {
+    const c = g.cfg || {};
+    if (!c.center) return toast('Set initial safe zone center first');
+    const centers = generatePhaseCenters(c.center, c.r0 || 500, c.r1 || 60, c.numPhases || 4);
+    update(gref('cfg'), { phaseCenters: centers });
+    toast('New random safe zone path generated.');
   }
   else if (a === 'randomize') {
     const ids = Object.keys(P);
@@ -1221,13 +1379,6 @@ $('#sheet').onclick = async e => {
     if (confirm('Confirm captured? You will transition to Seeker.')) {
       await update(gref('players/' + id), { role: 'seeker' });
       toast('Transferred to Seeker squad.');
-    }
-  }
-  else if (a === 'tag') {
-    const targetName = P[tid] ? P[tid].name : 'player';
-    if (confirm(`Confirm tag on ${targetName}?`)) {
-      await update(gref('players/' + tid), { role: 'seeker' });
-      toast(`${targetName} converted to seeker.`);
     }
   }
   else if (a === 'ping') {
@@ -1272,7 +1423,12 @@ $('#sheet').onchange = e => {
   const k = e.target.dataset.k;
   if (k && g && g.host === id) {
     const v = Math.max(1, +e.target.value || 1);
-    update(gref('cfg'), { [k]: v });
+    const c = g.cfg || {};
+    const updated = { ...c, [k]: v };
+    if (c.center && (k === 'r0' || k === 'r1' || k === 'numPhases')) {
+      updated.phaseCenters = generatePhaseCenters(c.center, updated.r0, updated.r1, updated.numPhases);
+    }
+    update(gref('cfg'), updated);
     toast(`Parameter ${k} updated`);
   }
 };
