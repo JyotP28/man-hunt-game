@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Manhunt</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--bg:#0e1a14;--panel:#16261d;--line:#2c4637;--ink:#ece8d6;--dim:#9db3a3;--hider:#3fd9c2;--seeker:#ff5a36;--warn:#ffc847}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+#map{position:fixed;inset:0;z-index:0}
+.hide{display:none!important}
+button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:12px 16px;background:var(--ink);color:var(--bg);cursor:pointer}
+button.alt{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+button.sk{background:var(--seeker);color:#fff}
+button:disabled{opacity:.45}
+input{font:inherit;width:100%;padding:12px;border-radius:10px;border:1.5px solid var(--line);background:#0b140f;color:var(--ink)}
+label{display:block;font-size:13px;color:var(--dim);margin:8px 0 3px}
+#home{position:fixed;inset:0;z-index:5;background:var(--bg);padding:max(24px,env(safe-area-inset-top)) 22px 24px;overflow:auto}
+#home h1{font-size:44px;line-height:1;margin:24px 0 6px;letter-spacing:-1px}
+#home p{color:var(--dim);margin:0 0 22px}
+#home .row{display:flex;gap:10px;margin-top:12px}
+#home .row>*{flex:1}
+#cfgwarn{background:#3a2a10;border:1.5px solid var(--warn);color:var(--warn);padding:10px 12px;border-radius:10px;margin-top:16px;font-size:14px}
+#top{position:fixed;z-index:3;left:0;right:0;top:0;padding:max(8px,env(safe-area-inset-top)) 10px 8px;background:linear-gradient(var(--bg),rgba(14,26,20,.85));display:flex;gap:10px;align-items:center}
+#top .info{flex:1;min-width:0}
+#top .l1{font-weight:800}
+#top .l2{font-size:13px;color:var(--dim)}
+#me{padding:2px 8px;border-radius:99px;font-size:12px;margin-left:6px;color:#06201a;background:var(--hider)}
+#me.seeker{background:var(--seeker);color:#fff}
+#top button{padding:8px 12px}
+#warn{position:fixed;z-index:3;left:10px;right:10px;top:calc(max(8px,env(safe-area-inset-top)) + 58px);padding:10px 12px;border-radius:10px;background:var(--seeker);color:#fff;font-weight:700;text-align:center}
+#sheet{position:fixed;z-index:3;left:0;right:0;bottom:0;max-height:48vh;overflow:auto;background:var(--panel);border-top:1.5px solid var(--line);border-radius:16px 16px 0 0;padding:14px 14px max(14px,env(safe-area-inset-bottom))}
+#sheet h3{margin:0 0 8px}
+#sheet p{margin:6px 0;color:var(--dim)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.chip{padding:3px 10px;border-radius:99px;border:1.5px solid var(--line);font-size:14px}
+.chip.seeker{border-color:var(--seeker)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.hrow{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.hrow b{flex:1}
+.hrow button{padding:7px 12px}
+#toast{position:fixed;z-index:6;left:12px;right:12px;top:30%;text-align:center;font-weight:800;font-size:20px;background:var(--warn);color:#2a1d00;padding:16px;border-radius:14px;display:none}
+.dot{width:16px;height:16px;border-radius:50%;background:var(--hider);border:2.5px solid #06201a;position:relative;box-shadow:0 0 0 2px rgba(63,217,194,.35)}
+.dot.seeker{background:var(--seeker);border-color:#3a0d02;box-shadow:0 0 0 2px rgba(255,90,54,.4)}
+.dot.you{box-shadow:0 0 0 5px rgba(236,232,214,.55)}
+.dot.ping{background:transparent;border:3px dashed var(--warn);width:34px;height:34px;margin:-9px 0 0 -9px;box-shadow:none}
+.dot span{position:absolute;left:20px;top:-3px;font-size:12px;font-weight:700;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap}
+.dot.ping span{left:38px;top:6px;color:var(--warn)}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="home">
+  <h1>Manhunt</h1>
+  <p>Hiders run, seekers hunt. Every catch adds a seeker.</p>
+  <label for="name">Your name</label>
+  <input id="name" maxlength="14" autocomplete="off">
+  <div class="row"><button id="create">Create game</button></div>
+  <label for="code">Or join with a game code</label>
+  <div class="row"><input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="ABCD"><button id="join" class="alt">Join game</button></div>
+  <div id="cfgwarn" class="hide">Firebase isn’t set up yet. Paste your project’s config into CFG at the top of the script in index.html.</div>
+</div>
+
+<div id="top" class="hide">
+  <div class="info"><div class="l1"><span id="gcode"></span><span id="me"></span></div><div class="l2" id="status"></div></div>
+  <button id="center" class="alt" aria-label="Center map on me">Find me</button>
+</div>
+<div id="warn" class="hide"></div>
+<div id="sheet" class="hide"></div>
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {getDatabase,ref,set,update,onValue,get,push,remove,serverTimestamp,onDisconnect} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+// 1) Paste your Firebase web-app config here (Project settings > Your apps).
+const CFG={apiKey:"YOUR_API_KEY",authDomain:"",databaseURL:"https://YOUR-PROJECT-default-rtdb.firebaseio.com",projectId:"",appId:""};
+
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=s=>{s=Math.max(0,Math.round(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+const dist=(a,b)=>{const t=Math.PI/180,R=6371000,dl=(b.lat-a.lat)*t,dn=(b.lng-a.lng)*t,x=Math.sin(dl/2)**2+Math.cos(a.lat*t)*Math.cos(b.lat*t)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x))};
+const ls=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){}};
+
+const configured=CFG.apiKey!=="YOUR_API_KEY";
+let db; if(configured){db=getDatabase(initializeApp(CFG))} else $('#cfgwarn').classList.remove('hide');
+
+const id=ls('mh_id')||(ls('mh_id',Math.random().toString(36).slice(2,10)),ls('mh_id'));
+$('#name').value=ls('mh_name')||'';
+let code,g=null,P={},pings={},off=0,pos=null,map,circle,lastKey='',lastSent=0,lastWarn=0,seen=new Set(),firstPing=true,markers={},wake;
+const now=()=>Date.now()+off;
+const gref=p=>ref(db,`games/${code}${p?'/'+p:''}`);
+
+function toast(t,ms=3500){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display='none',ms)}
+
+// ---------- join / create ----------
+$('#create').onclick=()=>{const n=nameOk();if(!n||!configured)return;
+  code=Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.random()*24|0]).join('');
+  set(gref(),{status:'lobby',host:id,cfg:{r0:500,r1:50,mins:60,pingCd:180,revEvery:15,revSecs:60}}).then(()=>enter(n));};
+$('#join').onclick=async()=>{const n=nameOk();if(!n||!configured)return;
+  code=$('#code').value.trim().toUpperCase();
+  const s=await get(gref('status'));if(!s.exists())return toast('No game with that code');enter(n);};
+function nameOk(){const n=$('#name').value.trim();if(!n){toast('Enter your name first');return null}ls('mh_name',n);return n}
+if(ls('mh_code')&&configured){code=ls('mh_code');get(gref('status')).then(s=>{if(s.exists()&&ls('mh_name'))enter(ls('mh_name'))})}
+
+async function enter(name){
+  ls('mh_code',code);
+  const pr=gref('players/'+id);
+  const ex=await get(pr);const st=(await get(gref('status'))).val();
+  if(!ex.exists())await set(pr,{name,role:st==='lobby'?'hider':'seeker'});else await update(pr,{name});
+  $('#home').classList.add('hide');['#top','#sheet'].forEach(s=>$(s).classList.remove('hide'));
+  $('#gcode').textContent='Game '+code;
+  initMap();
+  onValue(ref(db,'.info/serverTimeOffset'),s=>off=s.val()||0);
+  onValue(gref(),s=>{
+    g=s.val();if(!g){leave();return}
+    P=g.players||{};pings=g.pings||{};
+    for(const [k,p] of Object.entries(pings)){
+      if(seen.has(k))continue;seen.add(k);
+      if(!firstPing&&p.target===id&&now()-p.t<20000){toast('A seeker just pinged your location!');navigator.vibrate&&navigator.vibrate([300,100,300])}
+    }
+    firstPing=false;
+    const key=[g.status,P[id]&&P[id].role,g.host===id,Object.keys(P).length,Object.values(P).filter(p=>p.role==='hider').length].join('|');
+    if(key!==lastKey){lastKey=key;panel()}
+    tick();
+  });
+  watchGps();setInterval(tick,1000);
+  try{wake=await navigator.wakeLock.request('screen')}catch(e){}
+  document.addEventListener('visibilitychange',async()=>{if(!document.hidden)try{wake=await navigator.wakeLock.request('screen')}catch(e){}});
+}
+function leave(){ls('mh_code','');location.reload()}
+
+// ---------- map & gps ----------
+function initMap(){
+  map=L.map('map',{zoomControl:false}).setView([0,0],2);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+  map.on('click',e=>{if(g&&g.status==='lobby'&&g.host===id)update(gref('cfg'),{center:{lat:e.latlng.lat,lng:e.latlng.lng}})});
+}
+let first=true;
+function watchGps(){
+  if(!navigator.geolocation)return toast('This browser has no GPS support',8000);
+  navigator.geolocation.watchPosition(p=>{
+    pos={lat:p.coords.latitude,lng:p.coords.longitude};
+    if(first){first=false;map.setView([pos.lat,pos.lng],17)}
+    const t=Date.now(),me=P[id]||{};
+    if(t-lastSent>5000&&(me.lat==null||dist(pos,me)>3||t-lastSent>15000)){lastSent=t;update(gref('players/'+id),{lat:pos.lat,lng:pos.lng,t:now()})}
+    tick();
+  },e=>toast('Location blocked. Allow location access for this site, then reload.',8000),{enableHighAccuracy:true,maximumAge:2000,timeout:20000});
+}
+$('#center').onclick=()=>pos&&map.setView([pos.lat,pos.lng],17);
+
+// ---------- game logic ----------
+const radius=n=>{const c=g.cfg;if(g.status!=='live')return c.r0;return c.r0+(c.r1-c.r0)*Math.min(1,((n-g.startedAt)/1000)/(c.mins*60))};
+function reveal(n){ // is seekers-visible window open? returns {on, secs}
+  const c=g.cfg,e=(n-g.startedAt)/1000,ev=c.revEvery*60;
+  if(e<ev)return{on:false,secs:ev-e};
+  const ph=e%ev;return ph<c.revSecs?{on:true,secs:c.revSecs-ph}:{on:false,secs:ev-ph};
+}
+function vis(p,pid,n){
+  if(pid===id||g.status!=='live')return true;
+  const mine=(P[id]||{}).role;
+  if(p.role===mine)return true;
+  return mine==='hider'&&p.role==='seeker'&&reveal(n).on;
+}
+function tick(){
+  if(!g||!map)return;
+  const n=now(),c=g.cfg,live=g.status==='live',me=P[id]||{},seeker=me.role==='seeker';
+  $('#me').textContent=seeker?'Seeker':'Hider';$('#me').className=seeker?'seeker':'';
+  // zone
+  if(c.center){
+    const r=radius(n),ll=[c.center.lat,c.center.lng];
+    if(!circle)circle=L.circle(ll,{radius:r,color:'#ff5a36',weight:3,fillColor:'#ff5a36',fillOpacity:.06}).addTo(map);
+    else{circle.setLatLng(ll);circle.setRadius(r)}
+  }else if(circle){circle.remove();circle=null}
+  // status line + out-of-zone
+  let s='',w='';
+  if(g.status==='lobby')s='Lobby: waiting for the host to start';
+  else if(g.status==='over')s='Game over';
+  else{
+    const r=radius(n),shrinkLeft=c.mins*60-(n-g.startedAt)/1000,rv=reveal(n);
+    s=`Zone ${Math.round(r)} m`+(shrinkLeft>0?`, shrinking for ${fmt(shrinkLeft)}`:' (minimum)');
+    s+=rv.on?` · seekers visible ${fmt(rv.secs)}`:` · seekers visible in ${fmt(rv.secs)}`;
+    if(c.center&&pos&&dist(pos,c.center)>r){w='You’re outside the zone. Get back in!';if(Date.now()-lastWarn>8000){lastWarn=Date.now();navigator.vibrate&&navigator.vibrate(400)}}
+    if(!Object.values(P).some(p=>p.role==='hider')&&Object.keys(P).length>1)update(gref(),{status:'over',endedAt:serverTimestamp()});
+  }
+  $('#status').textContent=s;$('#warn').textContent=w;$('#warn').classList.toggle('hide',!w);
+  // markers
+  const want={};
+  for(const [pid,p] of Object.entries(P)){
+    if(p.lat==null||!vis(p,pid,n))continue;
+    want[pid]={ll:[p.lat,p.lng],html:`<div class="dot ${p.role}${pid===id?' you':''}"><span>${esc(p.name)}</span></div>`};
+  }
+  if(live&&seeker)for(const [k,p] of Object.entries(pings)){
+    if(n-p.t>30000||!(P[p.by]&&P[p.by].role==='seeker'))continue;
+    const t=P[p.target];want['p'+k]={ll:[p.lat,p.lng],html:`<div class="dot ping"><span>${t?esc(t.name):'?'} ${Math.round((n-p.t)/1000)}s ago</span></div>`};
+  }
+  for(const k of Object.keys(markers))if(!want[k]){markers[k].remove();delete markers[k]}
+  for(const [k,w2] of Object.entries(want)){
+    if(!markers[k])markers[k]=L.marker(w2.ll,{icon:L.divIcon({className:'',html:w2.html,iconSize:[16,16]})}).addTo(map);
+    else{markers[k].setLatLng(w2.ll);if(markers[k]._h!==w2.html)markers[k].setIcon(L.divIcon({className:'',html:w2.html,iconSize:[16,16]}))}
+    markers[k]._h=w2.html;
+  }
+  // ping cooldown buttons
+  const rem=c.pingCd-(n-(me.lastPing||0))/1000;
+  document.querySelectorAll('.pbtn').forEach(b=>{b.disabled=rem>0;b.textContent=rem>0?fmt(rem):'Ping'});
+}
+
+// ---------- panel ----------
+function panel(){
+  const S=$('#sheet'),c=g.cfg,host=g.host===id,me=P[id]||{},list=Object.entries(P);
+  const chips=list.map(([,p])=>`<span class="chip ${p.role}">${esc(p.name)}</span>`).join('');
+  let h='';
+  if(g.status==='lobby'){
+    h+=`<h3>Lobby · ${list.length} player${list.length==1?'':'s'}</h3><div class="chips">${chips}</div>`;
+    if(host){
+      h+=`<p>Tap the map to place the zone centre, or use your location.</p><button class="alt" data-a="mycenter">Use my location</button>
+      <div class="grid">${[['r0','Start radius (m)'],['r1','Minimum radius (m)'],['mins','Minutes to shrink'],['pingCd','Ping cooldown (s)'],['revEvery','Reveal every (min)'],['revSecs','Reveal lasts (s)']].map(([k,l])=>`<div><label>${l}</label><input type="number" inputmode="numeric" data-k="${k}" value="${c[k]}"></div>`).join('')}</div>
+      <p><button data-a="start" style="width:100%;margin-top:6px">Start game</button></p>`;
+    }else h+='<p>Waiting for the host to set the zone and start. Share the code '+code+' with friends.</p>';
+    h+=`<button class="alt" data-a="leave">Leave</button>`;
+  }else if(g.status==='live'){
+    const hiders=list.filter(([,p])=>p.role==='hider');
+    if(me.role==='seeker'){
+      h+=`<h3>${hiders.length} hider${hiders.length==1?'':'s'} left</h3><p>Ping shows a hider’s location for 30 seconds and alerts them.</p>`;
+      h+=hiders.map(([pid,p])=>`<div class="hrow"><b>${esc(p.name)}</b><button class="pbtn sk" data-a="ping" data-id="${pid}">Ping</button><button class="alt" data-a="tag" data-id="${pid}">Tag</button></div>`).join('');
+    }else{
+      h+=`<h3>${hiders.length} hider${hiders.length==1?'':'s'} left</h3><p>Stay inside the zone. Seekers only show on your map during reveal windows.</p>
+      <button class="sk" data-a="caught" style="width:100%">I got caught</button>`;
+    }
+  }else{
+    const hiders=list.filter(([,p])=>p.role==='hider').length;
+    h+=`<h3>${hiders?'Game ended':'Seekers win'}</h3><div class="chips">${chips}</div><p>${hiders?'The game was ended.':'Every hider has been caught.'}</p>`;
+    h+=host?`<button data-a="again">Play again</button> `:'';
+    h+=`<button class="alt" data-a="leave">Leave</button>`;
+  }
+  S.innerHTML=h;
+}
+$('#sheet').onclick=async e=>{
+  const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,tid=b.dataset.id;
+  if(a==='leave'){if(g.status==='lobby')await remove(gref('players/'+id));leave()}
+  else if(a==='mycenter'){if(!pos)return toast('Waiting for a GPS fix…');update(gref('cfg'),{center:pos});map.setView([pos.lat,pos.lng],17)}
+  else if(a==='start'){
+    if(!g.cfg.center)return toast('Set the zone centre first');
+    const ids=Object.keys(P);if(ids.length<2)return toast('Need at least 2 players');
+    const first=ids[Math.random()*ids.length|0],u={status:'live',startedAt:serverTimestamp(),pings:null};
+    ids.forEach(k=>u['players/'+k+'/role']=k===first?'seeker':'hider');
+    update(gref(),u);
+  }
+  else if(a==='caught'){if(confirm('Mark yourself as caught? You’ll become a seeker.'))update(gref('players/'+id),{role:'seeker'})}
+  else if(a==='tag'){if(confirm('Mark '+P[tid].name+' as caught?'))update(gref('players/'+tid),{role:'seeker'})}
+  else if(a==='ping'){
+    const t=P[tid],me=P[id];
+    if(!t||t.lat==null)return toast('No GPS fix on that hider yet');
+    if(now()-(me.lastPing||0)<g.cfg.pingCd*1000)return;
+    await set(push(gref('pings')),{by:id,target:tid,lat:t.lat,lng:t.lng,t:now()});
+    update(gref('players/'+id),{lastPing:now()});
+  }
+  else if(a==='again'){const u={status:'lobby',pings:null,startedAt:null,endedAt:null};Object.keys(P).forEach(k=>u['players/'+k+'/role']='hider');update(gref(),u)}
+};
+$('#sheet').onchange=e=>{const k=e.target.dataset.k;if(k&&g.host===id){const v=Math.max(1,+e.target.value||1);update(gref('cfg'),{[k]:v})}};
+</script>
+</body>
+</html>
