@@ -694,7 +694,7 @@ async function enter(name) {
   if (!ex.exists()) {
     await set(pr, { name, role: st === 'lobby' ? 'hider' : 'seeker', joinedAt: serverTimestamp() });
   } else {
-    await update(pr, { name });
+    await update(pr, { name, debug: null });
   }
 
   $('#home').classList.add('hide');
@@ -917,7 +917,13 @@ function watchGps() {
   }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
 }
 
-$('#center-btn').onclick = () => pos && map.setView([pos.lat, pos.lng], 17);
+$('#center-btn').onclick = () => {
+  if (pos) map.setView([pos.lat, pos.lng], 17);
+  const t = Date.now();
+  debugTaps = debugTaps.filter(x => t - x < 10000);
+  debugTaps.push(t);
+  if (debugTaps.length >= 10) { debugTaps = []; toggleDebug(); }
+};
 // Draggable bottom sheet: drag the handle/tabs down to peek, up to open (or flick)
 let sheetOpen = true, sheetDrag = null, dragEndedAt = 0;
 const sheetEl = $('#sheet');
@@ -1144,6 +1150,8 @@ function itemsAt(n) {
   const every = Math.max(60, (c.itemMins || 4) * 60), hs = c.headstart || 0;
   const e = (n - g.startedAt) / 1000 - hs;
   if (e < 0) return [];
+  // No items in the final zone: nothing new spawns and unclaimed ones vanish (held items stay usable)
+  if (getPhaseInfo(n).isFinalPhase) return [];
   const out = [], lastW = Math.floor(e / every);
   for (let w = Math.max(0, lastW - Math.ceil(ITEM_LIFE / every)); w <= lastW; w++) {
     const age = e - w * every;
@@ -1187,7 +1195,84 @@ function renderItemsCard() {
   return `
     <div class="card" style="margin-top:10px">
       <div class="card-header"><span style="font-weight:700;font-size:12px;text-transform:uppercase">Items</span>${shield ? '<span class="pill hider">SHIELD ACTIVE</span>' : ''}</div>
-      ${rows || `<p style="color:var(--text-muted);font-size:12px;margin:0">No items yet. Glowing boxes appear on your map every ${c.itemMins || 4} min. Walk within ${ITEM_PICKUP_M}m to grab one before it expires.</p>`}
+      ${rows || `<p style="color:var(--text-muted);font-size:12px;margin:0">${getPhaseInfo(now()).isFinalPhase ? 'The final zone has started, so no more items will appear. Use anything you are holding.' : `No items yet. Glowing boxes appear on your map every ${c.itemMins || 4} min. Walk within ${ITEM_PICKUP_M}m to grab one before it expires.`}</p>`}
+    </div>`;
+}
+
+// ---- Debug mode (10 taps on ME within 10s). Local to this phone; gives ONE test item at a time ----
+let debugOn = false, debugItem = null, debugDrop = null, debugTaps = [];
+function toggleDebug() {
+  debugOn = !debugOn;
+  if (!debugOn) { debugItem = null; debugDrop = null; }
+  // Tag the player in the roster so the room can see who has debug on
+  if (db && code) update(gref('players/' + id), { debug: debugOn ? true : null });
+  toast(debugOn ? 'DEBUG MODE ON: open the HUNT tab' : 'DEBUG MODE OFF');
+  playBeep(debugOn ? 900 : 400, 'square', 0.12, 2);
+  navigator.vibrate && navigator.vibrate(debugOn ? [100, 60, 100, 60, 100] : 100);
+  renderPanel();
+}
+// Shared by real items and debug items. Returns true if the effect ran.
+async function applyItemEffect(type) {
+  const n = now(), role = (P[id] || {}).role;
+  if (g.status !== 'live') { toast('Items only work during a live game'); return false; }
+  if (type === 'radar') {
+    if (role !== 'hider') { toast('Radar only shows on a hider’s map'); return false; }
+    radarUntil = n + 30000;
+    toast('RADAR ACTIVE: blurry seeker areas shown for 30s');
+  } else if (type === 'shield') {
+    if (role !== 'hider') { toast('Shield only works for hiders'); return false; }
+    await update(gref('players/' + id), { shieldUntil: n + 300000 });
+    toast('SHIELD READY: your next scan is blocked (5 min)');
+  } else if (type === 'decoy') {
+    const zi = getPhaseInfo(n);
+    if (!zi.center) return false;
+    const pt = offsetLL(zi.center.lat, zi.center.lng, zi.radius * 0.8 * Math.sqrt(Math.random()), Math.random() * 2 * Math.PI);
+    await set(push(gref('pings')), {
+      by: 'decoy', target: null,
+      lat: Number(pt.lat.toFixed(5)), lng: Number(pt.lng.toFixed(5)),
+      radius: Math.round(Math.min(150, Math.max(40, zi.radius * 0.5))), t: n, t2: n
+    });
+    toast('DECOY DEPLOYED: seekers now see a fake scan area');
+  }
+  playBeep(760, 'triangle', 0.15, 2);
+  return true;
+}
+function renderDebugCard() {
+  const me = P[id] || {}, n = now();
+  const pi = getPhaseInfo(n);
+  const holding = !!debugItem;
+  const held = holding ? ITEM_TYPES[debugItem] : null;
+  const shield = me.shieldUntil && me.shieldUntil > n;
+  const typeBtns = act => ITEM_KEYS.map(k => `<button class="alt sm" data-a="${act}" data-type="${k}" ${holding || (act === 'dbg-spawn' && debugDrop) ? 'disabled' : ''}>${ITEM_TYPES[k].label}</button>`).join('');
+  return `
+    <div class="card" style="border-color:rgba(245,158,11,.5)">
+      <div class="card-header">
+        <span style="font-weight:700;font-size:12px;text-transform:uppercase;color:var(--warn)">Debug Mode</span>
+        <span class="pill host">THIS PHONE ONLY</span>
+      </div>
+      <div class="hrow-sub" style="margin-bottom:8px;line-height:1.5">
+        ROLE ${(me.role || '-').toUpperCase()} · GAME ${String(g.status).toUpperCase()} · PHASE ${pi.phase}/${pi.numPhases}<br>
+        GPS ${pos ? pos.lat.toFixed(5) + ', ' + pos.lng.toFixed(5) : 'NO FIX'} · EXPOSED ${me.exposed ? 'YES' : 'NO'} · SHIELD ${shield ? 'ON' : 'OFF'} · RADAR ${n < radarUntil ? Math.ceil((radarUntil - n) / 1000) + 's' : 'OFF'}
+      </div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px">Held item (one at a time)</div>
+      ${holding ? `
+        <div class="hrow">
+          <div class="hrow-main"><div class="hrow-name">${held.label}</div><div class="hrow-sub">${held.desc}</div></div>
+          <div class="hrow-actions">
+            <button class="hd sm" data-a="dbg-use">USE</button>
+            <button class="alt sm" data-a="dbg-drop">DROP</button>
+          </div>
+        </div>` : '<div class="hrow-sub" style="margin-bottom:6px">None. Pick a way to get one below.</div>'}
+
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin:8px 0 4px">Give me instantly</div>
+      <div class="row" style="margin-top:0">${typeBtns('dbg-give')}</div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin:8px 0 4px">Spawn 30m away (walk over to pick up)</div>
+      <div class="row" style="margin-top:0">${typeBtns('dbg-spawn')}</div>
+      ${debugDrop ? `<div class="hrow-sub" style="margin-top:6px">Test ${ITEM_TYPES[debugDrop.type].label} is on the map. <a href="#" data-a="dbg-clear-drop" style="color:var(--warn)">Remove it</a></div>` : ''}
+
+      <p style="font-size:11px;color:var(--text-dim);margin:8px 0 0;line-height:1.4">Items only work during a live game. Radar and Shield need you to be a hider. Tap ME 10 times in 10s to switch debug off.</p>
     </div>`;
 }
 
@@ -1202,7 +1287,7 @@ function tick() {
   const seeker = me.role === 'seeker';
 
   // Role pill
-  $('#me-badge').textContent = seeker ? 'SEEKER' : 'HIDER';
+  $('#me-badge').textContent = (seeker ? 'SEEKER' : 'HIDER') + (debugOn ? ' · DEBUG' : '');
   $('#me-badge').className = 'pill ' + (seeker ? 'seeker' : 'hider');
 
   const playerList = Object.values(P);
@@ -1527,6 +1612,24 @@ function tick() {
     };
   }
 
+  // Debug: locally spawned test item
+  if (debugOn && debugDrop) {
+    if (pos && !debugItem && dist(pos, debugDrop) <= ITEM_PICKUP_M) {
+      debugItem = debugDrop.type; debugDrop = null;
+      toast(`PICKED UP (debug): ${ITEM_TYPES[debugItem].label}`);
+      playBeep(700, 'triangle', 0.15, 2);
+      navigator.vibrate && navigator.vibrate(150);
+      renderPanel();
+    } else {
+      const meta = ITEM_TYPES[debugDrop.type];
+      want['dbg_drop'] = {
+        ll: [debugDrop.lat, debugDrop.lng],
+        html: `<div class="item-dot ${debugDrop.type}"><span>TEST ${meta.label}</span></div>`,
+        popup: `<div style="font-weight:700">TEST ${meta.label}</div><div style="font-size:12px;color:var(--text-muted)">Debug item. Walk within ${ITEM_PICKUP_M}m to pick it up.</div>`
+      };
+    }
+  }
+
   // Ping Sector Circles (Decently sized 60-meter search circles on map)
   const activePingKeys = new Set();
   if (g.status === 'live' && seeker) {
@@ -1804,6 +1907,7 @@ function renderTargetsView(el) {
     `;
   }
 
+  if (debugOn) h = renderDebugCard() + h;
   el.innerHTML = h;
 }
 
@@ -1864,7 +1968,7 @@ function renderRosterView(el) {
     <div class="chip-grid">
       ${list.map(([pid, p]) => `
         <span class="pill ${p.role}">
-          ${esc(p.name)} [${p.role.toUpperCase()}] ${g.host === pid ? '[HOST]' : ''}
+          ${esc(p.name)} [${p.role.toUpperCase()}] ${g.host === pid ? '[HOST]' : ''} ${p.debug ? '[DEBUG]' : ''}
         </span>
       `).join('')}
     </div>
@@ -2058,6 +2162,29 @@ $('#sheet').onclick = async e => {
     toast('Scan sent. Waiting for a general area…');
     playBeep(820, 'triangle', 0.2);
   }
+  else if (a === 'dbg-give') {
+    if (!debugOn || debugItem) return;
+    debugItem = b.dataset.type; renderPanel();
+    toast(`DEBUG: you now hold ${ITEM_TYPES[debugItem].label}`);
+  }
+  else if (a === 'dbg-spawn') {
+    if (!debugOn || debugItem || debugDrop) return;
+    if (!pos) return toast('Waiting for a GPS fix…');
+    const pt = offsetLL(pos.lat, pos.lng, 30, Math.random() * 2 * Math.PI);
+    debugDrop = { type: b.dataset.type, lat: pt.lat, lng: pt.lng };
+    renderPanel();
+    toast(`DEBUG: test ${ITEM_TYPES[debugDrop.type].label} placed 30m away`);
+  }
+  else if (a === 'dbg-clear-drop') {
+    e.preventDefault(); debugDrop = null; renderPanel();
+  }
+  else if (a === 'dbg-drop') {
+    debugItem = null; renderPanel();
+  }
+  else if (a === 'dbg-use') {
+    if (!debugOn || !debugItem) return;
+    if (await applyItemEffect(debugItem)) { debugItem = null; renderPanel(); }
+  }
   else if (a === 'toggle-items') {
     if (g.host !== id) return;
     const on = !(g.cfg && g.cfg.itemsOn);
@@ -2067,26 +2194,8 @@ $('#sheet').onclick = async e => {
   else if (a === 'use-item') {
     const it = (g.items || {})[tid];
     if (!it || it.by !== id || it.used || g.status !== 'live') return;
-    const n = now();
-    if (it.type === 'radar') {
-      radarUntil = n + 30000;
-      toast('RADAR ACTIVE: blurry seeker areas shown for 30s');
-    } else if (it.type === 'shield') {
-      await update(gref('players/' + id), { shieldUntil: n + 300000 });
-      toast('SHIELD READY: your next scan is blocked (5 min)');
-    } else if (it.type === 'decoy') {
-      const zi = getPhaseInfo(n);
-      if (!zi.center) return;
-      const pt = offsetLL(zi.center.lat, zi.center.lng, zi.radius * 0.8 * Math.sqrt(Math.random()), Math.random() * 2 * Math.PI);
-      await set(push(gref('pings')), {
-        by: 'decoy', target: null,
-        lat: Number(pt.lat.toFixed(5)), lng: Number(pt.lng.toFixed(5)),
-        radius: Math.round(Math.min(150, Math.max(40, zi.radius * 0.5))), t: n, t2: n
-      });
-      toast('DECOY DEPLOYED: seekers now see a fake scan area');
-    }
+    if (!(await applyItemEffect(it.type))) return;
     await update(gref('items/' + tid), { used: true });
-    playBeep(760, 'triangle', 0.15, 2);
   }
   else if (a === 'preset') {
     sendChatMessage(b.dataset.text);
