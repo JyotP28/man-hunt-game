@@ -14,6 +14,7 @@
 <meta name="theme-color" content="#090d10">
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 :root{
@@ -195,6 +196,14 @@ label{display:block;font-size:11px;font-weight:700;color:var(--text-muted);margi
 .step.locked .step-body{pointer-events:none}
 input.err{border-color:var(--seeker)!important;animation:shake .35s}
 @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.msg.sys{align-self:center;max-width:100%;text-align:center;background:var(--warn-dim);border-color:rgba(245,158,11,.4);color:var(--warn);font-weight:700}
+.msg.sys .meta{justify-content:center;color:var(--warn)}
+
+/* Item mode */
+.item-dot{width:16px;height:16px;border-radius:4px;border:2px solid #fff;background:#0ea5e9;position:relative;box-shadow:0 0 0 5px rgba(14,165,233,.35);animation:pulseExposed 1.4s infinite}
+.item-dot.shield{background:#a855f7;box-shadow:0 0 0 5px rgba(168,85,247,.35)}
+.item-dot.decoy{background:#f59e0b;box-shadow:0 0 0 5px rgba(245,158,11,.35)}
+.item-dot span{position:absolute;left:22px;top:-3px;font-size:11px;font-weight:800;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap;pointer-events:none;font-family:var(--font-mono)}
 </style>
 </head>
 <body>
@@ -388,6 +397,8 @@ input.err{border-color:var(--seeker)!important;animation:shake .35s}
 <div id="toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {getDatabase,ref,set,update,onValue,get,push,remove,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
@@ -720,18 +731,19 @@ async function enter(name) {
     }
     firstPing = false;
 
-    // Seeker alerts when any hider becomes exposed
+    // Alerts when anyone (hider or seeker) steps outside the zone
     const me = P[id];
-    if (me && me.role === 'seeker') {
+    if (me) {
       for (const [pid, p] of Object.entries(P)) {
-        if (p.role === 'hider' && p.exposed && !seenExposed.has(pid)) {
+        if (pid === id) continue;
+        if (p.exposed && !seenExposed.has(pid)) {
           seenExposed.add(pid);
-          toast(`INTEL: ${p.name.toUpperCase()} OUT OF BOUNDS - LOCATION EXPOSED`);
+          toast(`INTEL: ${(p.name || '').toUpperCase()} (${(p.role || '').toUpperCase()}) OUT OF BOUNDS - LOCATION SHARED`);
           playBeep(880, 'sawtooth', 0.2, 2);
           navigator.vibrate && navigator.vibrate([200, 100, 200]);
-        } else if (p.role === 'hider' && !p.exposed && seenExposed.has(pid)) {
+        } else if (!p.exposed && seenExposed.has(pid)) {
           seenExposed.delete(pid);
-          toast(`INTEL: ${p.name.toUpperCase()} RETURNED TO SAFE ZONE - CONCEALED`);
+          toast(`INTEL: ${(p.name || '').toUpperCase()} BACK IN THE SAFE ZONE`);
         }
       }
     }
@@ -801,13 +813,28 @@ async function sendChatMessage(text) {
   playBeep(520, 'sine', 0.08);
 }
 
+// Map styles: OpenFreeMap vector tiles (free, no key). Falls back to plain OSM tiles if WebGL/MapLibre fails to load.
+const MAP_STYLES = { liberty: 'Liberty (colour)', bright: 'Bright', positron: 'Positron (light grey)', dark: 'Dark', fiord: 'Fiord (dark blue)' };
+const OFM_ATTR = '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
+let glLayer = null, rasterLayer = null;
+function setMapStyle(name) {
+  if (!MAP_STYLES[name]) name = 'liberty';
+  ls('mh_mapstyle', name);
+  try {
+    if (!(window.maplibregl && L.maplibreGL)) throw new Error('MapLibre not loaded');
+    if (rasterLayer) { map.removeLayer(rasterLayer); rasterLayer = null; }
+    if (glLayer) map.removeLayer(glLayer);
+    glLayer = L.maplibreGL({ style: `https://tiles.openfreemap.org/styles/${name}`, attribution: OFM_ATTR }).addTo(map);
+  } catch (e) {
+    console.error(e);
+    if (!rasterLayer) rasterLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: 'OpenStreetMap contributors' }).addTo(map);
+  }
+}
+
 // Map Initialization
 function initMap() {
-  map = L.map('map', { zoomControl: false }).setView([0, 0], 2);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: 'OpenStreetMap contributors'
-  }).addTo(map);
+  map = L.map('map', { zoomControl: false, maxZoom: 19 }).setView([0, 0], 2);
+  setMapStyle(ls('mh_mapstyle') || 'liberty');
 
   map.on('click', e => {
     if (g && g.status === 'lobby' && g.host === id) {
@@ -847,7 +874,7 @@ function maybeSendLocation(force = false) {
 
   if (isExposedLocally) {
     // When hider is outside safezone past 10s grace, broadcast every 10 seconds to seekers
-    if (dt >= 10000 || force) {
+    if (dt >= 15000 || force) {
       lastSentTime = t;
       lastSentPos = { lat: pos.lat, lng: pos.lng };
       lastExposedBroadcastTime = t;
@@ -1046,13 +1073,11 @@ function reveal(n) {
 // 3. Exposed hider outside safe zone (>10s) is visibly revealed to seekers!
 function vis(p, pid, n) {
   if (pid === id || !g || g.status !== 'live') return true;
+  // Anyone outside the zone (hider or seeker) is shown to everyone while they broadcast
+  if (p.exposed === true && (!p.t || n - p.t < 45000)) return true;
   const myRole = (P[id] || {}).role;
-  if (myRole === 'seeker') {
-    if (p.role === 'seeker') return true;              // seekers always see each other
-    return p.role === 'hider' && p.exposed === true;   // hiders only when out of zone
-  }
-  // Hiders see nobody but themselves, except seekers during a reveal window
-  return p.role === 'seeker' && reveal(n).on;
+  if (myRole === 'seeker') return p.role === 'seeker';        // seekers see each other
+  return p.role === 'seeker' && reveal(n).on;                  // hiders: seekers only during reveal windows
 }
 
 // ---- Ping answering: the HIDER's phone creates the blurred area, so a seeker's phone never receives the real spot ----
@@ -1074,11 +1099,96 @@ function answerPings() {
   const n = now();
   for (const [k, p] of Object.entries(pings)) {
     if (p.target !== id || p.lat != null || answeredPings.has(k) || n - p.t > 60000) continue;
+    const meNow = P[id] || {};
+    if (meNow.shieldUntil && meNow.shieldUntil > n) {
+      answeredPings.add(k);
+      meNow.shieldUntil = null;
+      update(gref('pings/' + k), { blocked: true, t2: now() });
+      update(gref('players/' + id), { shieldUntil: null });
+      toast('SHIELD ABSORBED THE SCAN: seekers got nothing.');
+      playBeep(560, 'triangle', 0.2, 2);
+      continue;
+    }
     const area = obfuscatedPingArea(n);
     if (!area) continue; // waiting for a GPS fix
     answeredPings.add(k);
     update(gref('pings/' + k), { lat: area.lat, lng: area.lng, radius: area.radius, t2: now() });
   }
+}
+
+// ---- Item mode (hiders only). Items are seeded, so every phone computes the same ones with no database writes until pickup ----
+const ITEM_TYPES = {
+  radar:  { label: 'RADAR',  desc: 'Shows blurry seeker areas on your map for 30 seconds' },
+  shield: { label: 'SHIELD', desc: 'Blocks the next seeker scan aimed at you (lasts 5 min)' },
+  decoy:  { label: 'DECOY',  desc: 'Plants a fake scan area on the seekers’ map' }
+};
+const ITEM_KEYS = Object.keys(ITEM_TYPES);
+const ITEM_WAVE_SIZE = 3, ITEM_LIFE = 300, ITEM_PICKUP_M = 15;
+let radarUntil = 0, claimTried = new Set(), radarCircles = {}, seenBlocked = new Set(), lastItemStart = null;
+function rng(seed) {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619); }
+  h >>>= 0; if (!h) h = 1;
+  return () => { h ^= h << 13; h >>>= 0; h ^= h >>> 17; h ^= h << 5; h >>>= 0; return h / 4294967296; };
+}
+function offsetLL(lat, lng, d, a) {
+  const R = 6371000;
+  return {
+    lat: lat + (d * Math.cos(a) / R) * (180 / Math.PI),
+    lng: lng + (d * Math.sin(a) / (R * Math.cos(lat * Math.PI / 180))) * (180 / Math.PI)
+  };
+}
+function itemsAt(n) {
+  const c = g.cfg || {};
+  if (!c.itemsOn || g.status !== 'live' || !g.startedAt) return [];
+  const every = Math.max(60, (c.itemMins || 4) * 60), hs = c.headstart || 0;
+  const e = (n - g.startedAt) / 1000 - hs;
+  if (e < 0) return [];
+  const out = [], lastW = Math.floor(e / every);
+  for (let w = Math.max(0, lastW - Math.ceil(ITEM_LIFE / every)); w <= lastW; w++) {
+    const age = e - w * every;
+    if (age < 0 || age >= ITEM_LIFE) continue;
+    const zi = getPhaseInfo(g.startedAt + (hs + w * every) * 1000 + 1);
+    if (!zi.center) continue;
+    for (let j = 0; j < ITEM_WAVE_SIZE; j++) {
+      const key = `${w}_${j}`, r = rng(`${g.startedAt}-${key}`);
+      const pt = offsetLL(zi.center.lat, zi.center.lng, zi.radius * 0.85 * Math.sqrt(r()), r() * 2 * Math.PI);
+      out.push({ id: key, type: ITEM_KEYS[Math.floor(r() * ITEM_KEYS.length)], lat: pt.lat, lng: pt.lng, left: ITEM_LIFE - age });
+    }
+  }
+  return out;
+}
+function handleItems(n, hider) {
+  if (g.startedAt !== lastItemStart) { lastItemStart = g.startedAt; claimTried = new Set(); radarUntil = 0; }
+  if (!hider || !pos || !(g.cfg || {}).itemsOn || g.status !== 'live') return [];
+  const claimed = g.items || {};
+  const open = itemsAt(n).filter(it => !claimed[it.id]);
+  for (const it of open) {
+    if (!claimTried.has(it.id) && dist(pos, it) <= ITEM_PICKUP_M) {
+      claimTried.add(it.id);
+      update(gref('items/' + it.id), { by: id, type: it.type, t: now() });
+      toast(`PICKED UP: ${ITEM_TYPES[it.type].label}. Open the HUNT tab to use it.`);
+      playBeep(700, 'triangle', 0.15, 2);
+      navigator.vibrate && navigator.vibrate(150);
+    }
+  }
+  return open;
+}
+function renderItemsCard() {
+  const c = g.cfg || {};
+  if (!c.itemsOn) return '';
+  const mine = Object.entries(g.items || {}).filter(([, v]) => v.by === id && !v.used);
+  const me = P[id] || {};
+  const shield = me.shieldUntil && me.shieldUntil > now();
+  const rows = mine.map(([k, v]) => {
+    const m = ITEM_TYPES[v.type] || { label: String(v.type), desc: '' };
+    return `<div class="hrow"><div class="hrow-main"><div class="hrow-name">${m.label}</div><div class="hrow-sub">${m.desc}</div></div><button class="hd sm" data-a="use-item" data-id="${k}">USE</button></div>`;
+  }).join('');
+  return `
+    <div class="card" style="margin-top:10px">
+      <div class="card-header"><span style="font-weight:700;font-size:12px;text-transform:uppercase">Items</span>${shield ? '<span class="pill hider">SHIELD ACTIVE</span>' : ''}</div>
+      ${rows || `<p style="color:var(--text-muted);font-size:12px;margin:0">No items yet. Glowing boxes appear on your map every ${c.itemMins || 4} min. Walk within ${ITEM_PICKUP_M}m to grab one before it expires.</p>`}
+    </div>`;
 }
 
 // Main 1s Tick Loop
@@ -1109,7 +1219,8 @@ function tick() {
         status: 'live',
         startedAt: serverTimestamp(),
         startCountdownAt: null,
-        pings: null
+        pings: null,
+        items: null
       });
     }
   } else {
@@ -1284,7 +1395,7 @@ function tick() {
 
       const isOutside = pi.center && pos && dist(pos, pi.center) > pi.radius;
 
-      if (isHider) {
+      if (isHider || seeker) {
         if (isOutside) {
           if (!outsideSince) outsideSince = n;
           const elapsedOutside = (n - outsideSince) / 1000;
@@ -1318,7 +1429,7 @@ function tick() {
             }
 
             // Force location update to seekers every 10 seconds
-            if (n - lastExposedBroadcastTime >= 10000 || !me.exposed) {
+            if (n - lastExposedBroadcastTime >= 15000 || !me.exposed) {
               maybeSendLocation(true);
             }
           }
@@ -1331,8 +1442,8 @@ function tick() {
             lastExposedBroadcastTime = 0;
 
             if (wasExposed) {
-              update(gref('players/' + id), { exposed: false, lat: null, lng: null, t: now() });
-              toast('SAFE ZONE RE-ENTERED: Location concealed from seekers');
+              update(gref('players/' + id), isHider ? { exposed: false, lat: null, lng: null, t: now() } : { exposed: false, t: now() });
+              toast('SAFE ZONE RE-ENTERED: Your location is no longer shared');
               playBeep(660, 'sine', 0.15, 2);
             }
           }
@@ -1389,8 +1500,8 @@ function tick() {
     const lng = pid === id && pos ? pos.lng : p.lng;
     if (lat == null || !vis(p, pid, n)) continue;
 
-    const isExposed = p.role === 'hider' && p.exposed === true;
-    const roleLabel = isExposed ? 'EXPOSED' : p.role.toUpperCase();
+    const isExposed = p.exposed === true;
+    const roleLabel = isExposed ? 'EXPOSED ' + p.role.toUpperCase() : p.role.toUpperCase();
     const dotClass = isExposed ? 'marker-dot exposed' : `marker-dot ${p.role}${pid === id ? ' you' : ''}`;
     const labelText = isExposed ? `${esc(p.name)} [EXPOSED]` : esc(p.name);
 
@@ -1403,6 +1514,16 @@ function tick() {
       ll: [lat, lng],
       html: `<div class="${dotClass}"><span>${labelText}</span></div>`,
       popup: popupHtml
+    };
+  }
+
+  // Item mode: unclaimed items are drawn for hiders only
+  for (const it of handleItems(n, isHider)) {
+    const meta = ITEM_TYPES[it.type];
+    want['item_' + it.id] = {
+      ll: [it.lat, it.lng],
+      html: `<div class="item-dot ${it.type}"><span>${meta.label}</span></div>`,
+      popup: `<div style="font-weight:700">${meta.label} ITEM</div><div style="font-size:12px;color:var(--text-muted)">${meta.desc}<br>Walk within ${ITEM_PICKUP_M}m to grab it. ${fmt(it.left)} left.</div>${getNavLinks(it.lat, it.lng, meta.label)}`
     };
   }
 
@@ -1447,10 +1568,33 @@ function tick() {
     }
   }
 
+  // Radar item: blurry seeker areas for the hider who used it
+  const radarWant = new Set();
+  if (isHider && g.status === 'live' && n < radarUntil) {
+    for (const [pid, p] of Object.entries(P)) {
+      if (p.role !== 'seeker' || p.lat == null) continue;
+      radarWant.add(pid);
+      const r = rng(pid + radarUntil), c0 = offsetLL(p.lat, p.lng, 20 + r() * 40, r() * 2 * Math.PI);
+      if (!radarCircles[pid]) {
+        radarCircles[pid] = L.circle([c0.lat, c0.lng], { radius: 70, color: '#0ea5e9', weight: 2, dashArray: '4, 6', fillColor: '#0ea5e9', fillOpacity: 0.14 }).addTo(map);
+      } else {
+        radarCircles[pid].setLatLng([c0.lat, c0.lng]);
+      }
+    }
+  }
+  for (const k of Object.keys(radarCircles)) {
+    if (!radarWant.has(k)) { radarCircles[k].remove(); delete radarCircles[k]; }
+  }
+
   // Seeker: if the target's phone never answered, give the scan back
   if (seeker) {
     for (const [k, p] of Object.entries(pings)) {
-      if (p.by === id && p.lat == null && n - p.t > 15000 && !flaggedPings.has(k)) {
+      if (p.by === id && p.blocked && n - p.t < 60000 && !seenBlocked.has(k)) {
+        seenBlocked.add(k);
+        toast('SCAN BLOCKED: that hider used a SHIELD.');
+        playBeep(300, 'square', 0.2, 2);
+      }
+      if (p.by === id && p.lat == null && !p.blocked && n - p.t > 15000 && !flaggedPings.has(k)) {
         flaggedPings.add(k);
         toast('No answer from that hider’s phone. Scan refunded, try again.');
         update(gref('players/' + id), { lastPing: 0 });
@@ -1575,6 +1719,7 @@ function renderTargetsView(el) {
           </div>
 
           <div class="row" style="margin-top:8px">
+            <button class="alt sm" data-a="toggle-items">ITEMS: ${c.itemsOn ? 'ON' : 'OFF'}</button>
             <button class="alt sm" data-a="randomize">RANDOMIZE TEAMS</button>
             <button class="hd sm" data-a="start-countdown">START GAME</button>
           </div>
@@ -1633,10 +1778,11 @@ function renderTargetsView(el) {
       h += `
         <div class="card">
           <h3 style="margin-bottom:4px">${hiders.length} HIDERS SURVIVING</h3>
-          <p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px">Remain inside the moving safe zones. If outside for >10s, location is broadcast to seekers every 10s.</p>
+          <p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px">Remain inside the moving safe zones. Stay outside for more than 10s and your location is shared with everyone every 15s until you are back in.</p>
           <button class="danger" data-a="caught" style="width:100%">I WAS CAUGHT</button>
         </div>
       `;
+      h += renderItemsCard();
     }
 
     const pi = getPhaseInfo(n);
@@ -1685,7 +1831,7 @@ function renderChatView(el) {
     <div id="chat-msgs">
       ${chatMsgs.length === 0 ? '<div style="color:var(--text-dim);text-align:center;padding:24px;font-size:12.5px">No transmissions on this team channel.</div>' : ''}
       ${chatMsgs.map(m => `
-        <div class="msg ${m.uid === id ? 'me' : ''}">
+        <div class="msg ${m.system ? 'sys' : (m.uid === id ? 'me' : '')}">
           <div class="meta">
             <span>${esc(m.name)}</span>
             <span>${new Date(m.t).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span>
@@ -1782,6 +1928,23 @@ function renderSettingsView(el) {
       <div>
         <label>Reveal Duration (s)</label>
         <input type="number" data-k="revSecs" value="${c.revSecs || 60}" ${!isHost ? 'disabled' : ''}>
+      </div>
+      <div>
+        <label>Item Mode</label>
+        <select data-k="itemsOn" ${!isHost ? 'disabled' : ''}>
+          <option value="0" ${!c.itemsOn ? 'selected' : ''}>OFF</option>
+          <option value="1" ${c.itemsOn ? 'selected' : ''}>ON</option>
+        </select>
+      </div>
+      <div>
+        <label>Item Wave (min)</label>
+        <input type="number" data-k="itemMins" value="${c.itemMins || 4}" ${!isHost ? 'disabled' : ''}>
+      </div>
+      <div style="grid-column:1 / -1">
+        <label>Map Style (this device only)</label>
+        <select id="map-style-sel">
+          ${Object.entries(MAP_STYLES).map(([k, v]) => `<option value="${k}" ${(ls('mh_mapstyle') || 'liberty') === k ? 'selected' : ''}>${v}</option>`).join('')}
+        </select>
       </div>
     </div>
   `;
@@ -1888,15 +2051,49 @@ $('#sheet').onclick = async e => {
     // Only a request goes out. The chosen hider's phone replies with a blurred area, never their real position.
     await set(push(gref('pings')), { by: id, target: chosenId, t: now() });
     await update(gref('players/' + id), { lastPing: now() });
+    const tName = P[chosenId].name || 'A hider', sName = me.name || 'A seeker';
+    const stamp = now();
+    push(chatRef('seeker'), { uid: 'system', system: true, name: 'RADAR', role: 'seeker', text: `${sName} scanned ${tName}. Search area incoming…`, t: stamp });
+    push(chatRef('hider'), { uid: 'system', system: true, name: 'RADAR', role: 'hider', text: `Seekers scanned ${tName}. Their general area was shared.`, t: stamp });
     toast('Scan sent. Waiting for a general area…');
     playBeep(820, 'triangle', 0.2);
+  }
+  else if (a === 'toggle-items') {
+    if (g.host !== id) return;
+    const on = !(g.cfg && g.cfg.itemsOn);
+    await update(gref('cfg'), { itemsOn: on });
+    toast(on ? 'Item mode ON: hiders can find items during the game' : 'Item mode OFF');
+  }
+  else if (a === 'use-item') {
+    const it = (g.items || {})[tid];
+    if (!it || it.by !== id || it.used || g.status !== 'live') return;
+    const n = now();
+    if (it.type === 'radar') {
+      radarUntil = n + 30000;
+      toast('RADAR ACTIVE: blurry seeker areas shown for 30s');
+    } else if (it.type === 'shield') {
+      await update(gref('players/' + id), { shieldUntil: n + 300000 });
+      toast('SHIELD READY: your next scan is blocked (5 min)');
+    } else if (it.type === 'decoy') {
+      const zi = getPhaseInfo(n);
+      if (!zi.center) return;
+      const pt = offsetLL(zi.center.lat, zi.center.lng, zi.radius * 0.8 * Math.sqrt(Math.random()), Math.random() * 2 * Math.PI);
+      await set(push(gref('pings')), {
+        by: 'decoy', target: null,
+        lat: Number(pt.lat.toFixed(5)), lng: Number(pt.lng.toFixed(5)),
+        radius: Math.round(Math.min(150, Math.max(40, zi.radius * 0.5))), t: n, t2: n
+      });
+      toast('DECOY DEPLOYED: seekers now see a fake scan area');
+    }
+    await update(gref('items/' + tid), { used: true });
+    playBeep(760, 'triangle', 0.15, 2);
   }
   else if (a === 'preset') {
     sendChatMessage(b.dataset.text);
   }
   else if (a === 'again') {
     await remove(ref(db, `games/${code}_chat`));
-    const u = { status: 'lobby', pings: null, startedAt: null, endedAt: null, startCountdownAt: null };
+    const u = { status: 'lobby', pings: null, items: null, startedAt: null, endedAt: null, startCountdownAt: null };
     Object.keys(P).forEach(k => u['players/' + k + '/role'] = 'hider');
     await update(gref(), u);
   }
@@ -1914,7 +2111,12 @@ $('#sheet').onsubmit = e => {
 };
 
 $('#sheet').onchange = e => {
+  if (e.target.id === 'map-style-sel') { setMapStyle(e.target.value); return; }
   const k = e.target.dataset.k;
+  if (k === 'itemsOn') {
+    if (g && g.host === id) { update(gref('cfg'), { itemsOn: e.target.value === '1' }); toast(e.target.value === '1' ? 'Item mode ON' : 'Item mode OFF'); }
+    return;
+  }
   if (k && g && g.host === id) {
     const v = Math.max(1, +e.target.value || 1);
     const c = g.cfg || {};
