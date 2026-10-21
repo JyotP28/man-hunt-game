@@ -14,6 +14,7 @@
 <meta name="theme-color" content="#090d10">
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 :root{
   --bg:#090d10;
@@ -113,11 +114,11 @@ label{display:block;font-size:11px;font-weight:700;color:var(--text-muted);margi
 
 /* Bottom Sheet / Panel */
 #sheet{position:fixed;z-index:25;left:0;right:0;bottom:0;max-height:82vh;background:var(--surface);border-top:1px solid var(--line);border-radius:16px 16px 0 0;padding:8px 12px var(--safe-bot);display:flex;flex-direction:column;box-shadow:0 -8px 24px rgba(0,0,0,.6);transition:transform .2s ease}
-.sheet-handle-wrap{width:100%;padding:4px 0 8px;display:flex;justify-content:center;cursor:pointer}
+.sheet-handle-wrap{width:100%;padding:10px 0 14px;display:flex;justify-content:center;cursor:grab;touch-action:none}
 .sheet-handle{width:36px;height:4px;border-radius:2px;background:var(--line-strong)}
 
 /* Tab Segmented Control */
-.tabs-control{display:grid;grid-template-columns:repeat(4,1fr);background:#090d11;border:1px solid var(--line);border-radius:8px;padding:2px;margin-bottom:10px}
+.tabs-control{touch-action:none;display:grid;grid-template-columns:repeat(4,1fr);background:#090d11;border:1px solid var(--line);border-radius:8px;padding:2px;margin-bottom:10px}
 .tab-btn{background:transparent;border:0;color:var(--text-dim);font-size:11.5px;font-weight:700;padding:7px 2px;border-radius:6px;text-transform:uppercase;letter-spacing:.04em;text-align:center;position:relative}
 .tab-btn.active{background:var(--surface-raised);color:var(--text)}
 .tab-btn .dot{position:absolute;top:6px;right:6px;width:5px;height:5px;background:var(--seeker);border-radius:50%}
@@ -169,8 +170,31 @@ label{display:block;font-size:11px;font-weight:700;color:var(--text-muted);margi
 /* Grid Settings */
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 
+/* QR Code Components */
+.qr-card{background:var(--surface-raised);border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:16px;text-align:center}
+.qr-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.qr-box-wrap{display:flex;justify-content:center;margin:8px 0}
+.qr-frame{background:#ffffff;padding:8px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,.5);min-width:148px;min-height:148px;border:1px solid rgba(255,255,255,.2)}
+.qr-frame canvas,.qr-frame img{display:block;border-radius:3px}
+.qr-url-row{display:flex;align-items:center;gap:6px;background:#090d11;border:1px solid var(--line);border-radius:6px;padding:5px 8px;margin-top:8px}
+.qr-url-text{font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;text-align:left}
+
 /* Toast */
 #toast{position:fixed;z-index:300;left:16px;right:16px;top:18%;text-align:center;font-weight:700;font-size:13px;background:var(--surface-raised);color:var(--text);border:1px solid var(--line-strong);padding:10px 14px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.7);display:none;pointer-events:none}
+
+/* Draggable sheet */
+#sheet{will-change:transform}
+#sheet.dragging{transition:none}
+
+/* Join steps */
+.step{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--surface);margin-bottom:12px;transition:opacity .2s,border-color .2s}
+.step-h{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-weight:800;font-size:12px;letter-spacing:.05em;text-transform:uppercase}
+.step-n{width:20px;height:20px;border-radius:50%;background:var(--text);color:var(--bg);display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-family:var(--font-mono)}
+.step.done .step-n{background:var(--hider);color:#041a12}
+.step.locked{opacity:.4}
+.step.locked .step-body{pointer-events:none}
+input.err{border-color:var(--seeker)!important;animation:shake .35s}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
 </style>
 </head>
 <body>
@@ -185,6 +209,10 @@ label{display:block;font-size:11px;font-weight:700;color:var(--text-muted);margi
     <div class="hud-bar">
       <div class="hud-meta">
         <span class="hud-code" id="gcode">ROOM ----</span>
+        <button id="hud-qr-btn" class="alt sm" title="Share Room QR" style="padding:2px 7px;font-size:11px">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3m0-5v.01M12 7v3m-5 2h3m6 0h.01M12 17v4m0-8h4"/></svg>
+          <span>QR</span>
+        </button>
         <span id="me-badge" class="pill neutral">HIDER</span>
       </div>
       <div class="hud-actions">
@@ -239,20 +267,48 @@ label{display:block;font-size:11px;font-weight:700;color:var(--text-muted);margi
       <p>Tactical real-time GPS tag. Random stepped shrinking storm zones, throttled telemetry, and role-based tactical communication.</p>
     </div>
 
-    <label for="name">Operator Codename</label>
-    <input id="name" maxlength="14" autocomplete="off" placeholder="Codename">
-
-    <div class="row">
-      <button id="create">Create Room</button>
+    <div class="step" id="step-name">
+      <div class="step-h"><span class="step-n">1</span>Type your name</div>
+      <input id="name" maxlength="14" autocomplete="off" enterkeyhint="done" placeholder="Your name (required)">
+      <div style="font-size:11.5px;color:var(--text-dim);margin-top:6px">Everyone in the room will see this.</div>
     </div>
 
-    <label for="code" style="margin-top:20px">Join Existing Room</label>
-    <div class="row">
-      <input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="ABCD">
-      <button id="join" class="alt">Join</button>
+    <div class="step locked" id="step-go">
+      <div class="step-h"><span class="step-n">2</span>Create or join a room</div>
+      <div class="step-body">
+        <button id="create" style="width:100%">Create Room</button>
+        <label for="code" style="margin-top:14px">Have a room code?</label>
+        <div class="row">
+          <input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="ABCD">
+          <button id="join" class="alt">Join</button>
+        </div>
+      </div>
     </div>
 
-    <div class="card" style="margin-top:20px">
+    <!-- Sleek QR Code Card (Scan To Play) -->
+    <div class="card" style="margin-top:20px;text-align:center">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em">Scan To Play</span>
+        <span class="pill neutral" id="home-qr-pill">WEBSITE</span>
+      </div>
+
+      <div class="qr-box-wrap">
+        <div id="home-qr" class="qr-frame"></div>
+      </div>
+
+      <div class="qr-url-row">
+        <span id="home-qr-url" class="mono qr-url-text">...</span>
+        <button id="home-qr-copy" class="alt sm" type="button" title="Copy Link">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+          <span>COPY</span>
+        </button>
+      </div>
+      <p style="font-size:11px;color:var(--text-dim);margin:8px 0 0;line-height:1.35">
+        Point phone camera at this QR code to immediately open the game on other devices.
+      </p>
+    </div>
+
+    <div class="card" style="margin-top:12px">
       <div style="font-weight:700;font-size:12px;text-transform:uppercase;margin-bottom:4px">Full Screen App Installation</div>
       <p style="font-size:12px;color:var(--text-muted);margin:0">
         <b>iOS Safari:</b> Tap Share button then <i>Add to Home Screen</i>.<br>
@@ -285,6 +341,30 @@ label{display:block;font-size:11px;font-weight:700;color:var(--text-muted);margi
   <h2>SESSION CONCLUDED</h2>
   <p>The host has officially closed this room.</p>
   <button id="closed-exit">Exit to Menu</button>
+</div>
+
+<!-- Fullscreen / Modal Room QR Overlay -->
+<div id="qr-modal" class="full-overlay hide">
+  <div style="background:var(--surface);border:1px solid var(--line-strong);border-radius:12px;padding:18px;max-width:320px;width:100%;text-align:center;box-shadow:0 12px 32px rgba(0,0,0,.8)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <span style="font-weight:800;font-size:13px;letter-spacing:.04em;text-transform:uppercase">Room QR Code</span>
+      <span class="pill host" id="modal-qr-badge">ROOM ----</span>
+    </div>
+    <div class="qr-box-wrap">
+      <div id="modal-qr-frame" class="qr-frame"></div>
+    </div>
+    <div class="qr-url-row" style="margin-top:10px">
+      <span id="modal-qr-url" class="mono qr-url-text">...</span>
+      <button id="modal-qr-copy" class="alt sm" type="button">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+        <span>COPY</span>
+      </button>
+    </div>
+    <p style="font-size:11.5px;color:var(--text-muted);margin:10px 0 14px">
+      Point any camera at this QR code to join this room directly.
+    </p>
+    <button id="modal-qr-close" class="alt" style="width:100%">CLOSE</button>
+  </div>
 </div>
 
 <!-- Bottom Drawer / Sheet -->
@@ -342,6 +422,20 @@ if (configured) {
 
 const id = ls('mh_id') || (ls('mh_id', Math.random().toString(36).slice(2,10)), ls('mh_id'));
 $('#name').value = ls('mh_name') || '';
+function syncSteps() {
+  const ok = $('#name').value.trim().length > 0;
+  $('#step-go').classList.toggle('locked', !ok);
+  $('#step-name').classList.toggle('done', ok);
+  $('#name').classList.remove('err');
+}
+$('#name').addEventListener('input', syncSteps);
+$('#name').addEventListener('keydown', e => { if (e.key === 'Enter') $('#name').blur(); });
+$('#step-go').addEventListener('click', () => {
+  if ($('#step-go').classList.contains('locked')) {
+    $('#name').classList.add('err'); $('#name').focus(); toast('Type your name first (step 1)');
+  }
+});
+syncSteps();
 
 // App State
 let code = '';
@@ -381,6 +475,8 @@ let lastExposedBroadcastTime = 0;
 
 const now = () => Date.now() + off;
 const gref = p => ref(db, `games/${code}${p ? '/' + p : ''}`);
+// Chats live beside the game node (not inside it) so hiders never download seeker chat and vice versa
+const chatRef = role => ref(db, `games/${code}_chat/${role}`);
 
 // Navigation links helper
 function getNavLinks(lat, lng, label = 'Location') {
@@ -500,6 +596,34 @@ function generateRandomPhaseCenters(initialCenter, r0, r1, numPhases) {
   return generateCentersBetween(initialCenter, randomFinal, r0, r1, numPhases);
 }
 
+// QR codes & room links
+const baseUrl = location.origin + location.pathname;
+const roomLink = () => code ? `${baseUrl}?room=${code}` : baseUrl;
+function drawQR(sel, text) {
+  const el = $(sel); if (!el) return;
+  el.innerHTML = '';
+  try { new QRCode(el, { text, width: 132, height: 132, correctLevel: QRCode.CorrectLevel.M }); }
+  catch (e) { el.textContent = 'QR unavailable'; }
+}
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); toast('Link copied'); } catch (e) { toast(t, 6000); }
+}
+function showRoomQR() {
+  const link = roomLink();
+  $('#modal-qr-badge').textContent = 'ROOM ' + code;
+  $('#modal-qr-url').textContent = link;
+  drawQR('#modal-qr-frame', link);
+  $('#qr-modal').classList.remove('hide');
+}
+drawQR('#home-qr', baseUrl);
+$('#home-qr-url').textContent = baseUrl;
+$('#home-qr-copy').onclick = () => copyText(baseUrl);
+$('#hud-qr-btn').onclick = showRoomQR;
+$('#modal-qr-close').onclick = () => $('#qr-modal').classList.add('hide');
+$('#modal-qr-copy').onclick = () => copyText(roomLink());
+const roomParam = (new URLSearchParams(location.search).get('room') || '').trim().toUpperCase().slice(0, 4);
+if (roomParam) $('#code').value = roomParam;
+
 // Join / Create
 $('#create').onclick = () => {
   initAudio();
@@ -536,12 +660,12 @@ $('#join').onclick = async () => {
 
 function nameOk() {
   const n = ($('#name').value || '').trim();
-  if (!n) { toast('Enter your codename'); return null; }
+  if (!n) { $('#name').classList.add('err'); $('#name').focus(); toast('Type your name first'); return null; }
   ls('mh_name', n);
   return n;
 }
 
-if (ls('mh_code') && configured) {
+if (ls('mh_code') && configured && !roomParam) {
   code = ls('mh_code');
   get(gref('status')).then(s => {
     if (s.exists() && s.val() !== 'closed' && ls('mh_name')) {
@@ -564,6 +688,7 @@ async function enter(name) {
 
   $('#home').classList.add('hide');
   ['#hud-header', '#sheet'].forEach(s => $(s).classList.remove('hide'));
+  sheetOpen = true; applySheet(false);
   $('#gcode').textContent = 'ROOM ' + code;
 
   initMap();
@@ -578,6 +703,7 @@ async function enter(name) {
     }
     P = g.players || {};
     pings = g.pings || {};
+    answerPings();
 
     // Dynamic Role-based Chat Subscription Check
     syncChatSubscription();
@@ -587,7 +713,7 @@ async function enter(name) {
       if (seenPings.has(k)) continue;
       seenPings.add(k);
       if (!firstPing && p.target === id && now() - p.t < 25000) {
-        toast('RADAR ALERT: Seekers scanned your 60m sector');
+        toast('RADAR ALERT: A seeker scanned your general area');
         playBeep(880, 'sawtooth', 0.2, 3);
         navigator.vibrate && navigator.vibrate([350, 150, 350]);
       }
@@ -646,7 +772,7 @@ function syncChatSubscription() {
   currentChatRole = role;
   chatMsgs = [];
 
-  chatUnsubscribe = onValue(gref(`chats/${role}`), s => {
+  chatUnsubscribe = onValue(chatRef(role), s => {
     const val = s.val() || {};
     chatMsgs = Object.entries(val).map(([k, v]) => ({ id: k, ...v })).sort((a,b) => a.t - b.t);
 
@@ -665,7 +791,7 @@ async function sendChatMessage(text) {
   if (!text || !text.trim()) return;
   const me = P[id] || {};
   const role = me.role || currentChatRole || 'hider';
-  await push(gref(`chats/${role}`), {
+  await push(chatRef(role), {
     uid: id,
     name: me.name || 'Anonymous',
     role,
@@ -713,6 +839,8 @@ function initMap() {
 // Unified Location Reporting with Out-of-Zone 10s Override
 function maybeSendLocation(force = false) {
   if (!pos || !db || !g || g.status !== 'live') return;
+  // Hiders never upload their position unless they are out of the zone (saves database writes and keeps them hidden)
+  if ((P[id] || {}).role === 'hider' && !isExposedLocally && !force) return;
   const t = Date.now();
   const d = lastSentPos ? dist(pos, lastSentPos) : Infinity;
   const dt = t - lastSentTime;
@@ -763,8 +891,53 @@ function watchGps() {
 }
 
 $('#center-btn').onclick = () => pos && map.setView([pos.lat, pos.lng], 17);
-$('#sheet-toggle').onclick = () => $('#sheet').classList.toggle('hide');
-$('#sheet-handle').onclick = () => $('#sheet').classList.toggle('hide');
+// Draggable bottom sheet: drag the handle/tabs down to peek, up to open (or flick)
+let sheetOpen = true, sheetDrag = null, dragEndedAt = 0;
+const sheetEl = $('#sheet');
+function sheetPeekOffset() {
+  const tabs = sheetEl.querySelector('.tabs-control');
+  return Math.max(0, sheetEl.offsetHeight - (tabs.offsetTop + tabs.offsetHeight + 10));
+}
+function applySheet(animate = true) {
+  sheetEl.classList.toggle('dragging', !animate);
+  sheetEl.style.transform = sheetOpen ? 'translateY(0)' : `translateY(${sheetPeekOffset()}px)`;
+}
+function setSheet(open) { sheetOpen = open; applySheet(true); }
+$('#sheet-toggle').onclick = () => setSheet(!sheetOpen);
+window.addEventListener('resize', () => applySheet(false));
+sheetEl.addEventListener('pointerdown', e => {
+  if (!(e.target.closest('#sheet-handle, .tabs-control') || !sheetOpen)) return;
+  sheetDrag = { id: e.pointerId, y: e.clientY, startOff: sheetOpen ? 0 : sheetPeekOffset(), moved: false, lastY: e.clientY, lastT: Date.now(), vel: 0, off: sheetOpen ? 0 : sheetPeekOffset() };
+});
+sheetEl.addEventListener('pointermove', e => {
+  const d = sheetDrag; if (!d || e.pointerId !== d.id) return;
+  const dy = e.clientY - d.y;
+  if (!d.moved) {
+    if (Math.abs(dy) < 6) return;
+    d.moved = true;
+    try { sheetEl.setPointerCapture(e.pointerId); } catch (_) {}
+  }
+  d.off = Math.min(sheetPeekOffset(), Math.max(0, d.startOff + dy));
+  sheetEl.classList.add('dragging');
+  sheetEl.style.transform = `translateY(${d.off}px)`;
+  const dt = Math.max(1, Date.now() - d.lastT);
+  d.vel = (e.clientY - d.lastY) / dt; d.lastY = e.clientY; d.lastT = Date.now();
+});
+function endSheetDrag(e) {
+  const d = sheetDrag; if (!d || e.pointerId !== d.id) return;
+  sheetDrag = null;
+  if (!d.moved) return;
+  dragEndedAt = Date.now();
+  sheetOpen = (d.off + d.vel * 120) < sheetPeekOffset() / 2;
+  applySheet(true);
+}
+sheetEl.addEventListener('pointerup', endSheetDrag);
+sheetEl.addEventListener('pointercancel', endSheetDrag);
+// A drag must never count as a tap on a tab or the handle
+sheetEl.addEventListener('click', ev => {
+  if (Date.now() - dragEndedAt < 350) { ev.stopPropagation(); ev.preventDefault(); }
+}, true);
+$('#sheet-handle').onclick = () => setSheet(!sheetOpen);
 
 // Stepped Shrinking Calculation with Fortnite Random Phase Centers
 function getPhaseInfo(n) {
@@ -874,16 +1047,45 @@ function reveal(n) {
 function vis(p, pid, n) {
   if (pid === id || !g || g.status !== 'live') return true;
   const myRole = (P[id] || {}).role;
-  if (p.role === myRole) return true;
-  if (p.role === 'hider' && p.exposed === true) return true;
-  if (reveal(n).on) return true;
-  return false;
+  if (myRole === 'seeker') {
+    if (p.role === 'seeker') return true;              // seekers always see each other
+    return p.role === 'hider' && p.exposed === true;   // hiders only when out of zone
+  }
+  // Hiders see nobody but themselves, except seekers during a reveal window
+  return p.role === 'seeker' && reveal(n).on;
+}
+
+// ---- Ping answering: the HIDER's phone creates the blurred area, so a seeker's phone never receives the real spot ----
+let answeredPings = new Set(), flaggedPings = new Set(), pingOffset = null;
+function obfuscatedPingArea(n) {
+  if (!pos) return null;
+  const radius = Math.round(Math.min(150, Math.max(40, getPhaseInfo(n).radius * 0.5)));
+  if (!pingOffset || n - pingOffset.t > 300000 || pingOffset.radius !== radius) {
+    // Circle centre is pushed 25-75% of the radius away from the hider, so they are inside it but never at its centre
+    pingOffset = { t: n, radius, d: radius * (0.25 + Math.random() * 0.5), a: Math.random() * 2 * Math.PI };
+  }
+  const R = 6371000;
+  const dLat = (pingOffset.d * Math.cos(pingOffset.a) / R) * (180 / Math.PI);
+  const dLng = (pingOffset.d * Math.sin(pingOffset.a) / (R * Math.cos(pos.lat * Math.PI / 180))) * (180 / Math.PI);
+  return { lat: Number((pos.lat + dLat).toFixed(5)), lng: Number((pos.lng + dLng).toFixed(5)), radius };
+}
+function answerPings() {
+  if (!g || g.status !== 'live' || (P[id] || {}).role !== 'hider') return;
+  const n = now();
+  for (const [k, p] of Object.entries(pings)) {
+    if (p.target !== id || p.lat != null || answeredPings.has(k) || n - p.t > 60000) continue;
+    const area = obfuscatedPingArea(n);
+    if (!area) continue; // waiting for a GPS fix
+    answeredPings.add(k);
+    update(gref('pings/' + k), { lat: area.lat, lng: area.lng, radius: area.radius, t2: now() });
+  }
 }
 
 // Main 1s Tick Loop
 function tick() {
   if (!g || !map) return;
   const n = now();
+  answerPings();
   const c = g.cfg || {};
   const me = P[id] || {};
   const isHider = me.role === 'hider';
@@ -1129,7 +1331,7 @@ function tick() {
             lastExposedBroadcastTime = 0;
 
             if (wasExposed) {
-              update(gref('players/' + id), { exposed: false, t: now() });
+              update(gref('players/' + id), { exposed: false, lat: null, lng: null, t: now() });
               toast('SAFE ZONE RE-ENTERED: Location concealed from seekers');
               playBeep(660, 'sine', 0.15, 2);
             }
@@ -1208,9 +1410,11 @@ function tick() {
   const activePingKeys = new Set();
   if (g.status === 'live' && seeker) {
     for (const [k, p] of Object.entries(pings)) {
-      if (n - p.t > 30000) continue;
+      if (p.lat == null) continue;
+      const pingT = p.t2 || p.t;
+      if (n - pingT > 30000) continue;
       activePingKeys.add(k);
-      const ageSecs = Math.round((n - p.t) / 1000);
+      const ageSecs = Math.round((n - pingT) / 1000);
       const pRadius = p.radius || 60;
 
       if (!pingCircles[k]) {
@@ -1240,6 +1444,18 @@ function tick() {
     if (!activePingKeys.has(k) || !seeker || g.status !== 'live') {
       pingCircles[k].remove();
       delete pingCircles[k];
+    }
+  }
+
+  // Seeker: if the target's phone never answered, give the scan back
+  if (seeker) {
+    for (const [k, p] of Object.entries(pings)) {
+      if (p.by === id && p.lat == null && n - p.t > 15000 && !flaggedPings.has(k)) {
+        flaggedPings.add(k);
+        toast('No answer from that hider’s phone. Scan refunded, try again.');
+        update(gref('players/' + id), { lastPing: 0 });
+        remove(gref('pings/' + k));
+      }
     }
   }
 
@@ -1282,6 +1498,7 @@ document.querySelectorAll('.tab-btn').forEach(tab => {
     document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
     currentTab = tab.dataset.tab;
+    setSheet(true);
     if (currentTab === 'chat') {
       hasUnreadChat = false;
       $('#chat-badge').classList.add('hide');
@@ -1297,6 +1514,7 @@ function renderPanel() {
   else if (currentTab === 'chat') renderChatView(container);
   else if (currentTab === 'roster') renderRosterView(container);
   else if (currentTab === 'settings') renderSettingsView(container);
+  if (!sheetOpen) requestAnimationFrame(() => applySheet(false));
 }
 
 // Tab 1: Targets / Hunt View
@@ -1313,10 +1531,22 @@ function renderTargetsView(el) {
       <div class="card" style="text-align:center">
         <h3 style="margin-bottom:4px">LOBBY</h3>
         <p style="color:var(--text-muted);font-size:12.5px;margin:0 0 12px">Room code <span style="color:var(--text);font-family:var(--font-mono);font-weight:700">${code}</span></p>
+        <div style="margin:0 0 10px;display:flex;align-items:center;justify-content:center;gap:8px">
+          <span style="font-weight:800">${esc(me.name || '')}</span>
+          <span class="pill ${me.role || 'hider'}">${(me.role || 'hider').toUpperCase()}</span>
+        </div>
+        <p style="color:var(--text-dim);font-size:12px;margin:0 0 12px">${list.length} player${list.length === 1 ? '' : 's'} in the room. Pick a team below, then wait for the host to start.</p>
         
         <div class="row">
           <button class="hd" data-a="setrole" data-r="hider" ${me.role === 'hider' ? 'disabled' : ''}>JOIN HIDERS</button>
           <button class="sk" data-a="setrole" data-r="seeker" ${me.role === 'seeker' ? 'disabled' : ''}>JOIN SEEKERS</button>
+        </div>
+
+        <div class="row" style="margin-top:8px">
+          <button class="alt sm" data-a="show-qr" style="width:100%">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3m0-5v.01M12 7v3m-5 2h3m6 0h.01M12 17v4m0-8h4"/></svg>
+            <span>SHOW ROOM QR CODE</span>
+          </button>
         </div>
       </div>
     `;
@@ -1363,7 +1593,7 @@ function renderTargetsView(el) {
             <span class="pill seeker">${pi.isHeadstart ? 'HOLD' : (remPing > 0 ? fmt(remPing) : 'READY')}</span>
           </div>
           <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">
-            Pings a random surviving hider to prevent targeting. Reveals a 60m search sector on map for 30 seconds.
+            Scans a random surviving hider. Marks a general search area on the map for 30 seconds. It is never their exact spot.
           </p>
           <button class="pbtn sk" data-a="ping-random" style="width:100%" ${remPing > 0 || pi.isHeadstart ? 'disabled' : ''}>
             ${pi.isHeadstart ? 'HOLD (HEADSTART)' : (remPing > 0 ? `COOLDOWN ${fmt(remPing)}` : 'SCAN RANDOM HIDER')}
@@ -1445,7 +1675,7 @@ function renderChatView(el) {
   let h = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <span style="font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em">${roleLabel}</span>
-      <span class="pill ${role}">SECURE</span>
+      <span class="pill ${role}">${role === 'seeker' ? 'SEEKERS ONLY' : 'HIDERS ONLY'}</span>
     </div>
 
     <div class="chat-presets">
@@ -1573,6 +1803,7 @@ $('#sheet').onclick = async e => {
   const a = b.dataset.a;
   const tid = b.dataset.id;
   initAudio();
+  if (a === 'show-qr') { showRoomQR(); return; }
 
   if (a === 'leave') {
     if (g && g.status === 'lobby') await remove(gref('players/' + id));
@@ -1635,7 +1866,9 @@ $('#sheet').onclick = async e => {
     if (!g.cfg || !g.cfg.center) return toast('Set safe zone center first (tap map or use GPS)');
     const ids = Object.keys(P);
     if (ids.length < 2) return toast('Requires at least 2 players');
-    await update(gref(), { status: 'starting', startCountdownAt: serverTimestamp() });
+    const su = { status: 'starting', startCountdownAt: serverTimestamp() };
+    ids.forEach(pid => { su[`players/${pid}/lat`] = null; su[`players/${pid}/lng`] = null; su[`players/${pid}/exposed`] = false; });
+    await update(gref(), su);
   }
   else if (a === 'caught') {
     if (confirm('Confirm captured? You will transition to Seeker.')) {
@@ -1648,33 +1881,21 @@ $('#sheet').onclick = async e => {
     const cd = (g.cfg.pingCd || 180) * 1000;
     if (now() - (me.lastPing || 0) < cd) return toast('Radar scan on cooldown');
 
-    const activeHiders = Object.entries(P).filter(([pid, p]) => p.role === 'hider' && p.lat != null);
-    if (activeHiders.length === 0) return toast('No GPS telemetry on surviving hiders yet');
+    const targets = Object.keys(P).filter(pid => P[pid].role === 'hider');
+    if (targets.length === 0) return toast('No hiders left to scan');
+    const chosenId = targets[Math.floor(Math.random() * targets.length)];
 
-    const [chosenId, chosenHider] = activeHiders[Math.floor(Math.random() * activeHiders.length)];
-
-    const fuzzDist = Math.random() * 15;
-    const fuzzAngle = Math.random() * 2 * Math.PI;
-    const R_EARTH = 6371000;
-    const fLat = chosenHider.lat + (fuzzDist * Math.cos(fuzzAngle) / R_EARTH) * (180 / Math.PI);
-    const fLng = chosenHider.lng + (fuzzDist * Math.sin(fuzzAngle) / (R_EARTH * Math.cos(chosenHider.lat * Math.PI / 180))) * (180 / Math.PI);
-
-    await set(push(gref('pings')), {
-      by: id,
-      target: chosenId,
-      lat: Number(fLat.toFixed(6)),
-      lng: Number(fLng.toFixed(6)),
-      radius: 60,
-      t: now()
-    });
+    // Only a request goes out. The chosen hider's phone replies with a blurred area, never their real position.
+    await set(push(gref('pings')), { by: id, target: chosenId, t: now() });
     await update(gref('players/' + id), { lastPing: now() });
-    toast('Radar scan deployed: 60m search area marked for 30s');
+    toast('Scan sent. Waiting for a general area…');
     playBeep(820, 'triangle', 0.2);
   }
   else if (a === 'preset') {
     sendChatMessage(b.dataset.text);
   }
   else if (a === 'again') {
+    await remove(ref(db, `games/${code}_chat`));
     const u = { status: 'lobby', pings: null, startedAt: null, endedAt: null, startCountdownAt: null };
     Object.keys(P).forEach(k => u['players/' + k + '/role'] = 'hider');
     await update(gref(), u);
